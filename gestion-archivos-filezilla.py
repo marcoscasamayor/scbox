@@ -3,32 +3,52 @@ import json
 from ftplib import FTP
 import ftplib
 
-# Verificar si el archivo scb.config o scb.json existe en la raíz
-config_file = 'scb.config'
-
-if not os.path.isfile(config_file):
-    config_file = 'scb.json'
+def buscar_archivo_config(xNombre_archivo, xDirectorio_actual):
+    # Escalar hacia arriba
+    while xDirectorio_actual != os.path.dirname(xDirectorio_actual):
+        # Buscar en el directorio actual
+        for root, dirs, files in os.walk(xDirectorio_actual):
+            if xNombre_archivo in files:
+                return os.path.join(root, xNombre_archivo)
+        
+        # Subir un nivel en la jerarquía de directorios
+        xDirectorio_actual = os.path.dirname(xDirectorio_actual)
     
-if not os.path.isfile(config_file):
-    print(f"El archivo de configuración no se encontró: {config_file}")
+    return None
+
+# Nombre del archivo de configuración
+xNombre_archivo = 'scb.config'
+
+# Directorio actual
+xDirectorio_actual = os.getcwd()
+
+# Buscar el archivo de configuración
+xRuta_config = buscar_archivo_config(xNombre_archivo, xDirectorio_actual)
+
+if not xRuta_config:
+    xNombre_archivo = 'scb.json'
+    xRuta_config = buscar_archivo_config(xNombre_archivo, xDirectorio_actual)
+
+if not xRuta_config:
+    print(f"El archivo de configuración no se encontró: {xNombre_archivo}")
     print("Por favor, verifica el archivo o crea uno con la configuración correcta.")
     exit()
 
-# Cargar configuraciones del archivo scb.config 
-with open(config_file, 'r') as file:
+# Cargar configuraciones del archivo scb.config o scb.json
+with open(xRuta_config, 'r') as file:
     config = json.load(file)
 
-ftp_server = config['FTP']['ftp_server']
-ftp_user = config['FTP']['ftp_user']
-ftp_password = config['FTP']['ftp_password']
+xFtp_server = config['FTP']['ftp_server']
+xFtp_user = config['FTP']['ftp_user']
+xFtp_password = config['FTP']['ftp_password']
 
 # Directorios de origen y destino
-origen_dir = r'C:\Users\SC3 Sistemas\Desktop\Ruben\ArchivosOrigen'
-destino_dir_ftp = '/'
+xOrigen_dir = r'C:\Users\SC3 Sistemas\Desktop\Ruben\ArchivosOrigen'
+xDestino_dir_ftp = '/'
 
 # Verifico si los directorios existen
-if not os.path.exists(origen_dir):
-    print(f"El directorio de origen no existe: {origen_dir}")
+if not os.path.exists(xOrigen_dir):
+    print(f"El directorio de origen no existe: {xOrigen_dir}")
 else:
     print("Seleccione una opción:")
     print("1. Copiar archivo desde origen a servidor FTP.")
@@ -36,93 +56,62 @@ else:
     print("3. Sincronizar carpetas entre origen y servidor FTP.")
     opcion = int(input("Ingrese su opción: "))
 
-    ftp = FTP(ftp_server)
-    ftp.login(user=ftp_user, passwd=ftp_password)
+    ftp = FTP(xFtp_server)
+    ftp.login(user=xFtp_user, passwd=xFtp_password)
 
     if opcion == 1:
         # Listar los archivos en el directorio de origen
-        archivos = [f for f in os.listdir(origen_dir) if os.path.isfile(os.path.join(origen_dir, f))]
+        aArchivos = [f for f in os.listdir(xOrigen_dir) if os.path.isfile(os.path.join(xOrigen_dir, f))]
 
-        if not archivos:
+        if not aArchivos:
             print("No se encontraron archivos en el directorio de origen.")
         else:
             print("Archivos disponibles en el directorio de origen:")
-            for i, archivo in enumerate(archivos, start=1):
+            for i, archivo in enumerate(aArchivos, start=1):
                 print(f"{i}. {archivo}")
 
             try:
                 seleccion = int(input("Ingrese el número del archivo que desea copiar: "))
-                if seleccion < 1 or seleccion > len(archivos):
-                    print("Selección no válida.")
-                else:
-                    archivo_seleccionado = archivos[seleccion - 1]
-                    src = os.path.join(origen_dir, archivo_seleccionado)
+                archivo_seleccionado = aArchivos[seleccion - 1]
+                ruta_archivo = os.path.join(xOrigen_dir, archivo_seleccionado)
 
-                    # Obtener lista de archivos en el servidor FTP
-                    archivos_servidor = ftp.nlst()
-
-                    # Filtrar los elementos '.' y '..' de la lista de archivos
-                    archivos_servidor = [f for f in archivos_servidor if f not in ('.', '..')]
-
-                    if archivo_seleccionado in archivos_servidor:
-                        print(f"El archivo '{archivo_seleccionado}' ya existe en el servidor FTP. No se subirá de nuevo.")
-                    else:
-                        # Transferencia del archivo
-                        with open(src, 'rb') as file:
-                            ftp.storbinary(f'STOR {archivo_seleccionado}', file)
-                        print(f"Archivo copiado con éxito al servidor FTP: {archivo_seleccionado}")
-
-            except ValueError:
-                print("Debe ingresar un número válido.")
+                with open(ruta_archivo, 'rb') as file:
+                    ftp.storbinary(f'STOR {archivo_seleccionado}', file)
+                print(f"Archivo {archivo_seleccionado} copiado al servidor FTP.")
+            except (IndexError, ValueError):
+                print("Selección inválida. Por favor, intente de nuevo.")
 
     elif opcion == 2:
-        # Obtener lista de archivos en el servidor FTP
-        archivos_servidor = ftp.nlst()
+        # Listar archivos en el servidor FTP
+        aArchivos_servidor = ftp.nlst()
+        aArchivos_servidor = [f for f in aArchivos_servidor if f not in ('.', '..')]
 
-        # Filtrar los elementos '.' y '..' de la lista de archivos
-        archivos_servidor = [f for f in archivos_servidor if f not in ('.', '..')]
-
-        if not archivos_servidor: print("No se encontraron archivos en el servidor FTP.")
+        if not aArchivos_servidor:
+            print("No se encontraron archivos en el servidor FTP.")
         else:
             print("Archivos disponibles en el servidor FTP:")
-            for i, archivo in enumerate(archivos_servidor, start=1):
+            for i, archivo in enumerate(aArchivos_servidor, start=1):
                 print(f"{i}. {archivo}")
 
             try:
                 seleccion = int(input("Ingrese el número del archivo que desea eliminar: "))
-                if seleccion < 1 or seleccion > len(archivos_servidor):
-                    print("Selección no válida.")
-                else:
-                    archivo_seleccionado = archivos_servidor[seleccion - 1]
-                    ftp.delete(archivo_seleccionado)
-                    print(f"Archivo eliminado con éxito del servidor FTP: {archivo_seleccionado}")
-
-            except ValueError:
-                print("Debe ingresar un número válido.")
+                archivo_seleccionado = aArchivos_servidor[seleccion - 1]
+                ftp.delete(archivo_seleccionado)
+                print(f"Archivo {archivo_seleccionado} eliminado del servidor FTP.")
+            except (IndexError, ValueError):
+                print("Selección inválida. Por favor, intente de nuevo.")
 
     elif opcion == 3:
-        # Función para sincronizar carpetas
-        def sincronizar_carpetas(origen, destino):
-            # Crear la carpeta en el servidor FTP
-            try:
-                ftp.mkd(destino)
-            except ftplib.error_perm as e:
-                print(f"No se pudo crear la carpeta en el servidor FTP: {e}")
+        # Sincronizar carpetas entre origen y servidor FTP
+        aArchivos = [f for f in os.listdir(xOrigen_dir) if os.path.isfile(os.path.join(xOrigen_dir, f))]
+        aArchivos_servidor = ftp.nlst()
 
-            # Listar archivos en el directorio de origen
-            for item in os.listdir(origen):
-                ruta_item = os.path.join(origen, item)
-                if os.path.isdir(ruta_item):
-                    # Llamada recursiva para carpetas
-                    sincronizar_carpetas(ruta_item, destino + item + '/')
-                else:
-                    # Subir archivos
-                    with open(ruta_item, 'rb') as file:
-                        ftp.storbinary(f'STOR {destino + item}', file)
-                    print(f"Archivo copiado con éxito al servidor FTP: {destino + item}")
+        for archivo in aArchivos:
+            if archivo not in aArchivos_servidor:
+                with open(os.path.join(xOrigen_dir, archivo), 'rb') as file:
+                    ftp.storbinary(f'STOR {archivo}', file)
+                print(f"Archivo {archivo} subido al servidor FTP.")
 
-        # Iniciar la sincronización
-        sincronizar_carpetas(origen_dir, destino_dir_ftp)
+        print("Upload completado.") 
 
     ftp.quit()
-    #hasta aca tengo bien echa la sincronizacion
