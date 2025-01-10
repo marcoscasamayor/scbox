@@ -11,6 +11,41 @@ def buscar_archivo_ancestro(xNombre_archivo, xDirectorio_actual):
         xDirectorio_actual = os.path.dirname(xDirectorio_actual)
     return None
 
+# Función para crear la estructura de carpetas en el servidor FTP
+def crear_estructura_carpetas_ftp(ftp, origen_dir, carpeta_principal, destino_dir_ftp='/'):
+    """
+    Crea la estructura de carpetas en el servidor FTP desde el directorio raíz hasta el directorio actual.
+
+    Parámetros:
+    - ftp: Objeto FTP conectado al servidor.
+    - origen_dir: Directorio actual en el sistema local.
+    - carpeta_principal: Directorio principal donde se encuentra el archivo de configuración.
+    - destino_dir_ftp: Directorio raíz en el servidor FTP (por defecto '/').
+
+    Retorna:
+    - ruta_actual_ftp: Ruta final en el servidor FTP donde se creó la estructura de carpetas.
+    """
+    # Calcular la ruta relativa entre el directorio actual y la carpeta principal
+    ruta_relativa = os.path.relpath(origen_dir, carpeta_principal)
+    
+    # Dividir la ruta relativa en segmentos de carpetas
+    carpetas = ruta_relativa.split(os.sep)
+    
+    # Inicializar la ruta actual en el servidor FTP
+    ruta_actual_ftp = destino_dir_ftp
+    
+    # Recorrer cada carpeta y crearla en el servidor FTP
+    for carpeta in carpetas:
+        if carpeta:  # Evitar carpetas vacías
+            ruta_actual_ftp += carpeta + '/'
+            try:
+                ftp.mkd(ruta_actual_ftp)
+                print(f"Carpeta creada: {ruta_actual_ftp}")
+            except Exception as e:
+                print(f"No se pudo crear la carpeta {ruta_actual_ftp}: {e}")
+    
+    return ruta_actual_ftp
+
 # Nombre del archivo de configuración
 archivo_config = 'scb.config'
 
@@ -55,78 +90,71 @@ else:
 
     if opcion == 1:
         # Listar los archivos en el directorio de origen
-        aArchivos = [f for f in os.listdir(origen_dir) if os.path.isfile(os.path.join(origen_dir, f))]
-
-        if not aArchivos:
-            print("No se encontraron archivos en el directorio de origen.")
-        else:
-            print("Archivos disponibles en el directorio de origen:")
-            for i, archivo in enumerate(aArchivos, start=1):
-                print(f"{i}. {archivo}")
-
-            try:
-                seleccion = int(input("Ingrese el número del archivo que desea copiar: "))
-                archivo_seleccionado = aArchivos[seleccion - 1]
-                ruta_archivo = os.path.join(origen_dir, archivo_seleccionado)
-
-                with open(ruta_archivo, 'rb') as file:
-                    ftp.storbinary(f'STOR {archivo_seleccionado}', file)
-                print(f"Archivo {archivo_seleccionado} copiado al servidor FTP.")
-            except (IndexError, ValueError):
-                print("Selección inválida. Por favor, intente de nuevo.")
-
-    elif opcion == 2:
-        # Listar archivos en el servidor FTP
-        aArchivos_servidor = ftp.nlst()
-        aArchivos_servidor = [f for f in aArchivos_servidor if f not in ('.', '..')]
-
-        if not aArchivos_servidor:
-            print("No se encontraron archivos en el servidor FTP.")
-        else:
-            print("Archivos disponibles en el servidor FTP:")
-            for i, archivo in enumerate(aArchivos_servidor, start=1):
-                print(f"{i}. {archivo}")
-
-            try:
-                seleccion = int(input("Ingrese el número del archivo que desea eliminar : "))
-                archivo_seleccionado = aArchivos_servidor[seleccion - 1]
-                ftp.delete(archivo_seleccionado)
-                print(f"Archivo {archivo_seleccionado} eliminado del servidor FTP.")
-            except (IndexError, ValueError):
-                print("Selección inválida. Por favor, intente de nuevo.")
-
-    elif opcion == 3:
-        # Sincronizar carpetas entre origen y servidor FTP
-        ruta_relativa = os.path.relpath(origen_dir, carpeta_principal)
-
-        # Crear la estructura de carpetas en el servidor FTP automáticamente
-        carpetas = ruta_relativa.split(os.sep)
-        ruta_actual_ftp = destino_dir_ftp
-
-        for carpeta in carpetas:
-            if carpeta:  # Evitar carpetas vacías
-                ruta_actual_ftp += carpeta + '/'
-                try:
-                    ftp.mkd(ruta_actual_ftp)
-                    print(f"Carpeta creada: {ruta_actual_ftp}")
-                except Exception as e:
-                    print(f"No se pudo crear la carpeta {ruta_actual_ftp}: {e}")
-
-        # Copiar archivos que no existen en el servidor FTP
-        aArchivos = [f for f in os.listdir(origen_dir) if os.path.isfile(os.path.join(origen_dir, f))]
+        aArchivos  = [f for f in os.listdir(origen_dir) if os.path.isfile(os.path.join(origen_dir, f))]
         for archivo in aArchivos:
             ruta_archivo_local = os.path.join(origen_dir, archivo)
-            ruta_archivo_ftp = os.path.join(ruta_actual_ftp, archivo)
-
             try:
-                # Verificar si el archivo ya existe en el servidor FTP
-                if archivo not in ftp.nlst(ruta_actual_ftp):
-                    with open(ruta_archivo_local, 'rb') as file:
-                        ftp.storbinary(f'STOR {ruta_archivo_ftp}', file)
-                    print(f"Archivo {archivo} copiado al servidor FTP.")
-                else:
-                    print(f"El archivo {archivo} ya existe en el servidor FTP.")
+                with open(ruta_archivo_local, 'rb') as file:
+                    ftp.storbinary(f'STOR {archivo}', file)
+                print(f"Archivo {archivo} copiado al servidor FTP.")
             except Exception as e:
                 print(f"No se pudo copiar el archivo {archivo}: {e}")
 
+    elif opcion == 2:
+        # Eliminar archivo del servidor FTP
+        archivo_a_eliminar = input("Ingrese el nombre del archivo a eliminar del servidor FTP: ")
+        try:
+            ftp.delete(archivo_a_eliminar)
+            print(f"Archivo {archivo_a_eliminar} eliminado del servidor FTP.")
+        except Exception as e:
+            print(f"No se pudo eliminar el archivo {archivo_a_eliminar}: {e}")
+
+    elif opcion == 3:
+    # Sincronizar carpetas entre origen y servidor FTP
+        ruta_final_ftp = crear_estructura_carpetas_ftp(ftp, origen_dir, carpeta_principal)
+    
+    # Función para subir archivos recursivamente
+    def subir_archivos_recursivo(ftp, ruta_local, ruta_ftp):
+        """
+        Sube archivos recursivamente desde la ruta local al servidor FTP.
+
+        Parámetros:
+        - ftp: Objeto FTP conectado al servidor.
+        - ruta_local: Ruta local del directorio actual.
+        - ruta_ftp: Ruta FTP correspondiente al directorio actual.
+        """
+        # Recorrer archivos y subdirectorios en la ruta local
+        for nombre in os.listdir(ruta_local):
+            ruta_completa_local = os.path.join(ruta_local, nombre)
+            
+            # Formatear la ruta FTP para usar barras normales
+            ruta_completa_ftp = os.path.join(ruta_ftp, nombre).replace("\\", "/")
+            
+            if os.path.isfile(ruta_completa_local):
+                # Si es un archivo, subirlo al servidor FTP
+                try:
+                    with open(ruta_completa_local, 'rb') as file:
+                        ftp.storbinary(f'STOR {ruta_completa_ftp}', file)
+                    print(f"Archivo subido: {ruta_completa_local} -> {ruta_completa_ftp}")
+                except Exception as e:
+                    print(f"No se pudo subir el archivo {ruta_completa_local}: {e}")
+            elif os.path.isdir(ruta_completa_local):
+                # Si es un directorio, crear la carpeta en el servidor FTP y subir su contenido
+                try:
+                    ftp.mkd(ruta_completa_ftp)
+                    print(f"Carpeta creada en FTP: {ruta_completa_ftp}")
+                except Exception as e:
+                    print(f"No se pudo crear la carpeta {ruta_completa_ftp}: {e}")
+                
+                # Llamada recursiva para subir el contenido del subdirectorio
+                subir_archivos_recursivo(ftp, ruta_completa_local, ruta_completa_ftp)
+    
+    # Llamar a la función recursiva para subir archivos desde el directorio actual
+    subir_archivos_recursivo(ftp, origen_dir, ruta_final_ftp)
+    
+    # Llamar a la función recursiva para subir archivos desde el directorio actual
+    subir_archivos_recursivo(ftp, origen_dir, ruta_final_ftp)
+
+    # Cerrar la conexión FTP3
     ftp.quit()
+    
