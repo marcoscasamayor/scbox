@@ -97,14 +97,14 @@ def subir_archivos_recursivo(xFtp, xRuta_local, xRuta_ftp):
                 if tamaño_archivo_local != tamaño_archivo_ftp:  # Si el tamaño es diferente, se considera modificado
                     with open(ruta_completa_local, 'rb') as file:
                         xFtp.storbinary(f'STOR {ruta_completa_ftp}', file)
-                    print(f"Archivo modificado y subido: {ruta_completa_local} -> {ruta_completa_ftp}")
+                    print(f"Archivo actualizado: {ruta_completa_local} -> {ruta_completa_ftp}")
                     # Registrar el historial en el log después de subir el archivo
                     crear_scb_log(xFtp, xRuta_ftp, "modificó", nombre)
             except Exception:
                 try:
                     with open(ruta_completa_local, 'rb') as file:
                         xFtp.storbinary(f'STOR {ruta_completa_ftp}', file)
-                    print(f"Archivo subido: {ruta_completa_local} -> {ruta_completa_ftp}")
+                    print(f"Archivo creado: {ruta_completa_local} -> {ruta_completa_ftp}")
                     # Registrar el historial en el log después de subir el archivo
                     crear_scb_log(xFtp, xRuta_ftp, "creó", nombre)
                 except Exception as e:
