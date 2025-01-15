@@ -90,7 +90,16 @@ def subir_archivos_recursivo(xFtp, xRuta_local, xRuta_ftp):
 
         if os.path.isfile(ruta_completa_local):  # Si es un archivo
             try:
-                xFtp.size(ruta_completa_ftp)
+                # Verificar si el archivo ya existe en el FTP
+                tamaño_archivo_ftp = xFtp.size(ruta_completa_ftp)
+                tamaño_archivo_local = os.path.getsize(ruta_completa_local)
+
+                if tamaño_archivo_local != tamaño_archivo_ftp:  # Si el tamaño es diferente, se considera modificado
+                    with open(ruta_completa_local, 'rb') as file:
+                        xFtp.storbinary(f'STOR {ruta_completa_ftp}', file)
+                    print(f"Archivo modificado y subido: {ruta_completa_local} -> {ruta_completa_ftp}")
+                    # Registrar el historial en el log después de subir el archivo
+                    crear_scb_log(xFtp, xRuta_ftp, "modificó", nombre)
             except Exception:
                 try:
                     with open(ruta_completa_local, 'rb') as file:
