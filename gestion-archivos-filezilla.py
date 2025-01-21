@@ -191,5 +191,4 @@ if __name__ == "__main__":  # Si el archivo se ejecuta directamente
         ruta_final_ftp = crear_estructura_carpetas_ftp(ftp, os.getcwd(), os.path.dirname(ruta_config))  # Crea la estructura de carpetas en el FTP
         subir_archivos_recursivo(ftp, os.getcwd(), ruta_final_ftp)  # Llama a la función para subir archivos
 
-    # Cerrar conexión FTP
     ftp.quit()  # Cierra la conexión FTP
