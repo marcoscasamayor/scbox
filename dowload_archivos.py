@@ -1,6 +1,8 @@
 import os
 from ftplib import FTP
 import json
+import time
+from datetime import datetime
 
 ARCHIVO_CONFIG = 'scb.config'  # Nombre del archivo de configuración
 
@@ -39,7 +41,9 @@ def obtener_fecha_modificacion_ftp(ftp, archivo):
     """
     try:
         respuesta = ftp.sendcmd(f"MDTM {archivo}")
-        return respuesta[4:].strip()  # Devuelve la fecha en formato AAAAMMDDHHMMSS
+        fecha_str = respuesta[4:].strip()  # AAAAMMDDHHMMSS
+        fecha = datetime.strptime(fecha_str, "%Y%m%d%H%M%S")
+        return int(time.mktime(fecha.timetuple()))  # Convertir a timestamp en UTC
     except Exception:
         return None
 
@@ -86,21 +90,20 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
             # Es un archivo, verificar si ya existe y está actualizado
             fecha_ftp = obtener_fecha_modificacion_ftp(ftp, ruta_completa_ftp)
             if fecha_ftp:
-                fecha_ftp = int(fecha_ftp)  # Convertir a entero para comparar
                 if os.path.exists(ruta_completa_local):
                     fecha_local = int(os.path.getmtime(ruta_completa_local))
                     if fecha_local >= fecha_ftp:
-                        continue
+                        continue  # Si no necesita actualización, omitir
                     registrar_evento(ruta_completa_local, "Archivo actualizado")
                 else:
                     registrar_evento(ruta_completa_local, "Archivo creado")
 
-            try:
-                with open(ruta_completa_local, 'wb') as archivo_local:
-                    ftp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)  # Descargar archivo
-                os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))  # Actualizar fecha de modificación local
-            except Exception:
-                pass
+                try:
+                    with open(ruta_completa_local, 'wb') as archivo_local:
+                        ftp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)  # Descargar archivo
+                    os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))  # Actualizar fecha de modificación local
+                except Exception:
+                    pass
 
 if __name__ == "__main__":
     # Buscar el archivo de configuración
