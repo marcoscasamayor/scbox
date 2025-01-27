@@ -22,8 +22,7 @@ def leer_configuracion(xRuta_config):
     try:
         with open(xRuta_config, 'r') as file:  # Abre el archivo de configuración
             return json.load(file)  # Retorna el contenido del archivo como un diccionario
-    except Exception as e:  # Captura cualquier excepción
-        print(f"Error leyendo el archivo de configuración: {e}")  # Imprime el error
+    except Exception:
         exit()  # Sale del programa
 
 def conectar_ftp(xConfig):
@@ -41,21 +40,28 @@ def obtener_fecha_modificacion_ftp(ftp, archivo):
     try:
         respuesta = ftp.sendcmd(f"MDTM {archivo}")
         return respuesta[4:].strip()  # Devuelve la fecha en formato AAAAMMDDHHMMSS
-    except Exception as e:
-        print(f"Error al obtener la fecha de modificación para {archivo}: {e}")
+    except Exception:
         return None
+
+def registrar_evento(archivo, accion):
+    """
+    Registra si un archivo fue creado o actualizado.
+    """
+    mensaje = f"{accion}: {archivo}"
+    print(mensaje)  # Mostrar el mensaje en la consola
+    with open("registro_descargas.log", "a") as log:
+        log.write(mensaje + "\n")
 
 def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
     """
     Descarga archivos de un servidor FTP recursivamente desde una carpeta específica hacia abajo,
-    verificando si los archivos ya existen y están actualizados. Solo muestra mensajes si se actualizan o crean archivos o carpetas.
+    verificando si los archivos ya existen y están actualizados.
     """
     os.makedirs(ruta_local, exist_ok=True)  # Crear la carpeta local si no existe
 
     try:
         elementos = ftp.nlst(ruta_ftp)  # Listar los archivos y carpetas en la ruta actual del FTP
-    except Exception as e:
-        print(f"Error al listar los elementos en {ruta_ftp}: {e}")
+    except Exception:
         return
 
     for elemento in elementos:
@@ -75,7 +81,6 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
                 continue  # No imprimir mensaje, simplemente saltar esta carpeta
             if not os.path.exists(ruta_completa_local):
                 os.makedirs(ruta_completa_local)
-                print(f"Carpeta creada: {ruta_completa_local}")
             descargar_archivos_recursivo(ftp, ruta_completa_ftp, ruta_completa_local)  # Llamada recursiva
         except Exception:
             # Es un archivo, verificar si ya existe y está actualizado
@@ -85,22 +90,22 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
                 if os.path.exists(ruta_completa_local):
                     fecha_local = int(os.path.getmtime(ruta_completa_local))
                     if fecha_local >= fecha_ftp:
-                        print(f"Archivo {ruta_completa_local} ya está actualizado, se omite la descarga.")
                         continue
+                    registrar_evento(ruta_completa_local, "Archivo actualizado")
+                else:
+                    registrar_evento(ruta_completa_local, "Archivo creado")
 
             try:
-                print(f"Descargando archivo: {ruta_completa_local}")
                 with open(ruta_completa_local, 'wb') as archivo_local:
                     ftp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)  # Descargar archivo
                 os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))  # Actualizar fecha de modificación local
-                print(f"Archivo {ruta_completa_local} creado o actualizado.")
-            except Exception as e:
-                print(f"Error al descargar el archivo: {ruta_completa_local}. Detalles: {e}. Verifique si el archivo existe y tiene permisos adecuados.")
+            except Exception:
+                pass
+
 if __name__ == "__main__":
     # Buscar el archivo de configuración
     ruta_config = buscar_archivo_ancestro(ARCHIVO_CONFIG, os.getcwd()) 
     if not ruta_config:
-        print(f"No se encontró el archivo de configuración: {ARCHIVO_CONFIG}")
         exit()
 
     # Establecer la carpeta de inicio
