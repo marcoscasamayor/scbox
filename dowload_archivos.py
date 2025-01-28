@@ -8,13 +8,17 @@ ARCHIVO_CONFIG = 'scb.config'  # Nombre del archivo de configuración
 
 def buscar_archivo_ancestro(xNombre_archivo, xDirectorio_actual):
     """
-    Busca el archivo de configuración en los directorios ancestrales.
+    Busca el archivo de configuración en el directorio actual y en los directorios ancestrales.
     """
+    # Primero verifica en el directorio actual
+    if xNombre_archivo in os.listdir(xDirectorio_actual):
+        return os.path.join(xDirectorio_actual, xNombre_archivo)
+
     while xDirectorio_actual != os.path.dirname(xDirectorio_actual):  # Mientras no se llegue al directorio raíz
-        for root, _, files in os.walk(xDirectorio_actual):  # Recorre los directorios
-            if xNombre_archivo in files:  # Si encuentra el archivo
-                return os.path.join(root, xNombre_archivo)  # Retorna la ruta completa del archivo
         xDirectorio_actual = os.path.dirname(xDirectorio_actual)  # Sube un nivel en el directorio
+        if xNombre_archivo in os.listdir(xDirectorio_actual):  # Si encuentra el archivo
+            return os.path.join(xDirectorio_actual, xNombre_archivo)  # Retorna la ruta completa del archivo
+
     return None  # Retorna None si no se encuentra el archivo
 
 def leer_configuracion(xRuta_config):
@@ -47,15 +51,6 @@ def obtener_fecha_modificacion_ftp(ftp, archivo):
     except Exception:
         return None
 
-def registrar_evento(archivo, accion):
-    """
-    Registra si un archivo fue creado o actualizado.
-    """
-    mensaje = f"{accion}: {archivo}"
-    print(mensaje)  # Mostrar el mensaje en la consola
-    with open("registro_descargas.log", "a") as log:
-        log.write(mensaje + "\n")
-
 def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
     """
     Descarga archivos de un servidor FTP recursivamente desde una carpeta específica hacia abajo,
@@ -68,12 +63,15 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
     except Exception:
         return
 
+    if not elementos:
+        return  # Si no hay archivos ni carpetas, salir
+
     for elemento in elementos:
         ruta_completa_ftp = os.path.join(ruta_ftp, elemento).replace('\\', '/')
         ruta_completa_local = os.path.join(ruta_local, os.path.basename(elemento))
 
         # Filtrado de archivos/carpetas problemáticas
-        if any(part in ['.', '..'] for part in ruta_completa_ftp.split('/')):
+        if any(part in ['.', '..'] for part in ruta_completa_ftp.split('/')): 
             continue  # Saltar los directorios problemáticos
 
         # Manejo de carpeta vacía o inaccesible
@@ -81,11 +79,13 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
             ftp.cwd(ruta_completa_ftp)  # Intentar cambiar al directorio
             try:
                 ftp.nlst()  # Intentar listar archivos en la carpeta
+                # Si llegamos aquí es que el directorio tiene contenido, hacer recursión
+                if not os.path.exists(ruta_completa_local):
+                    os.makedirs(ruta_completa_local)
+                descargar_archivos_recursivo(ftp, ruta_completa_ftp, ruta_completa_local)  # Llamada recursiva
             except Exception:
-                continue  # No imprimir mensaje, simplemente saltar esta carpeta
-            if not os.path.exists(ruta_completa_local):
-                os.makedirs(ruta_completa_local)
-            descargar_archivos_recursivo(ftp, ruta_completa_ftp, ruta_completa_local)  # Llamada recursiva
+                # Si no hay contenido, continuar con el siguiente directorio o archivo
+                continue
         except Exception:
             # Es un archivo, verificar si ya existe y está actualizado
             fecha_ftp = obtener_fecha_modificacion_ftp(ftp, ruta_completa_ftp)
@@ -94,10 +94,13 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
                     fecha_local = int(os.path.getmtime(ruta_completa_local))
                     if fecha_local >= fecha_ftp:
                         continue  # Si no necesita actualización, omitir
-                    registrar_evento(ruta_completa_local, "Archivo actualizado")
+                    else:
+                        # Si el archivo existe pero está desactualizado, actualizarlo
+                        print(f"Archivo actualizado: {ruta_completa_local}")
                 else:
-                    registrar_evento(ruta_completa_local, "Archivo creado")
-
+                    # Si el archivo no existe, es un archivo nuevo
+                    print(f"Archivo creado: {ruta_completa_local}")
+                
                 try:
                     with open(ruta_completa_local, 'wb') as archivo_local:
                         ftp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)  # Descargar archivo
