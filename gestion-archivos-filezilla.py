@@ -4,6 +4,7 @@ from ftplib import FTP
 import io  
 from datetime import datetime 
 import getpass 
+from ignore_list import IGNORE_LIST  # Importar la lista de ignorados
 
 # --- Constantes ---
 ARCHIVO_CONFIG = 'scb.config'  # Nombre del archivo de configuración
@@ -121,14 +122,19 @@ def crear_estructura_carpetas_ftp(ftp, xOrigen_dir, xCarpeta_principal, xDestino
 
 def subir_archivos_recursivo(ftp, xRuta_local, xRuta_ftp):
     """
-    Sube archivos y carpetas recursivamente desde la ruta local al servidor FTP.
+    Sube archivos y carpetas recursivamente desde la ruta local al servidor FTP,
+    verificando si deben ser ignorados.
     """
     for xNombre in os.listdir(xRuta_local):
         if xNombre == "scb.log":
             continue
-
+ 
         xRuta_completa_local = os.path.join(xRuta_local, xNombre)
         xRuta_completa_ftp = os.path.join(xRuta_ftp, xNombre).replace("\\", "/")
+
+        # Verificar si el archivo o carpeta está en la lista de ignorados
+        if any(ignored in xRuta_completa_local for ignored in IGNORE_LIST):
+            continue  # Ignorar el archivo o carpeta
 
         if os.path.isfile(xRuta_completa_local):
             xFecha_creacion_local = datetime.fromtimestamp(os.path.getctime(xRuta_completa_local))
@@ -141,6 +147,7 @@ def subir_archivos_recursivo(ftp, xRuta_local, xRuta_ftp):
                         ftp.storbinary(f'STOR {xRuta_completa_ftp}', file)
                     set_fecha_modificacion(ftp, xRuta_completa_ftp, xFecha_creacion_local)
                     crear_scb_log(ftp, xRuta_ftp, "actualizó", xNombre, tipo="archivo")
+                    
                     print(f"Archivo actualizado: {xRuta_completa_local} -> {xRuta_completa_ftp}")
             except Exception:
                 with open(xRuta_completa_local, 'rb') as file:
