@@ -75,7 +75,7 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
             continue  # Saltar los directorios problemáticos
 
         # Verificar si el archivo o carpeta está en la lista de ignorados
-        if any(ignored in ruta_completa_ftp for ignored in IGNORE_LIST):
+        if any(ignored == os.path.basename(ruta_completa_ftp) for ignored in IGNORE_LIST):
             continue  # Ignorar el archivo o carpeta
 
         # Manejo de carpeta vacía o inaccesible
@@ -86,7 +86,9 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
                 # Si llegamos aquí es que el directorio tiene contenido, hacer recursión
                 if not os.path.exists(ruta_completa_local):
                     os.makedirs(ruta_completa_local)
+                    print(f"Carpeta creada: {ruta_completa_local}")  # Mensaje de creación de carpeta
                 descargar_archivos_recursivo(ftp, ruta_completa_ftp, ruta_completa_local)  # Llamada recursiva
+
             except Exception:
                 # Si no hay contenido, continuar con el siguiente directorio o archivo
                 continue
@@ -103,8 +105,8 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local):
                         print(f"Archivo actualizado: {ruta_completa_local}")
                 else:
                     # Si el archivo no existe, es un archivo nuevo
-                    print(f"Archivo creado: {ruta_completa_local}")
-                
+                    print(f"Archivo creado: {ruta_completa_local}")  # Mensaje de creación de archivo
+
                 try:
                     with open(ruta_completa_local, 'wb') as archivo_local:
                         ftp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)  # Descargar archivo
@@ -125,7 +127,7 @@ if __name__ == "__main__":
 
     ruta_inicial_ftp = ftp.pwd()
     ruta_local = os.getcwd()
-
+    
     descargar_archivos_recursivo(ftp, ruta_inicial_ftp, ruta_local)
 
     ftp.quit()

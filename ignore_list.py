@@ -1,6 +1,8 @@
 # ignore_list.py
 IGNORE_LIST = [
-    '.ftpquota'
+    'archivoIgnorado.txt',
+    '.gitPrueba',
+    '.ftpquota',
     '.git',
     '__pycache__',
     'node_modules',
