@@ -1,0 +1,10 @@
+{
+  "ignore_list": [
+    "archivoIgnorado.txt",
+    ".gitPrueba",
+    ".ftpquota",
+    ".git",
+    "__pycache__",
+    "node_modules"
+  ]
+}
