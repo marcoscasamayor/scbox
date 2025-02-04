@@ -138,3 +138,9 @@ if __name__ == "__main__":
     descargar_archivos_recursivo(ftp, ruta_inicial_ftp, ruta_local, ignore_list)
 
     ftp.quit()
+
+
+"""
+
+
+"""
