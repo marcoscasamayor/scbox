@@ -42,6 +42,23 @@ def leer_opciones(xRuta_opciones):
     except Exception:
         return []
 
+def crear_archivo_opciones(xRuta_opciones):
+    """
+    Crea el archivo 'scb.options' con la estructura predeterminada.
+    """
+    opciones = {
+        "ignore_list": [
+            "archivoIgnorado.txt",  # Puedes agregar más archivos ignorados aquí
+        ]
+    }
+    
+    try:
+        with open(xRuta_opciones, 'w') as file:
+            json.dump(opciones, file, indent=2)
+        print(f"Archivo de opciones creado: {xRuta_opciones}")
+    except Exception as e:
+        print(f"Error al crear el archivo de opciones: {e}")
+
 def conectar_ftp(xConfig):
     """
     Conecta al servidor FTP utilizando la configuración proporcionada.
@@ -121,7 +138,13 @@ if __name__ == "__main__":
         exit()
     
     ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPCIONES, os.getcwd())
-    ignore_list = leer_opciones(ruta_opciones) if ruta_opciones else []
+    if not ruta_opciones:
+        # Si no se encuentra el archivo de opciones, se crea con la estructura predeterminada.
+        ruta_opciones = os.path.join(os.path.dirname(ruta_config), ARCHIVO_OPCIONES)
+        crear_archivo_opciones(ruta_opciones)
+        ignore_list = []  # Por defecto, la lista de ignorados estará vacía
+    else:
+        ignore_list = leer_opciones(ruta_opciones)
     
     carpeta_inicio = os.path.dirname(ruta_config)
     os.chdir(carpeta_inicio)
