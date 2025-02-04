@@ -121,10 +121,7 @@ if __name__ == "__main__":
         exit()
     
     ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPCIONES, os.getcwd())
-    if not ruta_opciones:
-        ignore_list = []
-    else:
-        ignore_list = leer_opciones(ruta_opciones)
+    ignore_list = leer_opciones(ruta_opciones) if ruta_opciones else []
     
     carpeta_inicio = os.path.dirname(ruta_config)
     os.chdir(carpeta_inicio)
@@ -138,9 +135,3 @@ if __name__ == "__main__":
     descargar_archivos_recursivo(ftp, ruta_inicial_ftp, ruta_local, ignore_list)
 
     ftp.quit()
-
-
-"""
-
-
-"""
