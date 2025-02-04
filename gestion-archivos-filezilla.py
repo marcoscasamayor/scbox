@@ -1,13 +1,13 @@
-import os  
-import json  
-from ftplib import FTP  
-import io  
-from datetime import datetime 
-import getpass 
-from ignore_list import IGNORE_LIST  # Importar la lista de ignorados
+import os
+import json
+from ftplib import FTP
+import io
+from datetime import datetime
+import getpass
 
 # --- Constantes ---
 ARCHIVO_CONFIG = 'scb.config'  # Nombre del archivo de configuración
+ARCHIVO_OPTIONS = 'scb.options'  # Nombre del archivo de opciones
 LOG_TEMPLATE = "Log generado el: {fecha}\nCarpeta: {carpeta}\n"  # Plantilla para generar logs
 HISTORIAL_TEMPLATE = "{fecha} {hora} el usuario {usuario} {accion} {tipo} {descripcion}"  # Plantilla para historial de cambios
 
@@ -37,6 +37,31 @@ def leer_configuracion(xRuta_config):
     except Exception as e:
         print(f"Error leyendo el archivo de configuración: {e}")
         exit()
+
+def leer_ignore_list(xRuta_options):
+    """
+    Lee el archivo scb.options y retorna la lista de archivos a ignorar.
+    Si el archivo no existe, crea uno con la estructura predeterminada.
+    """
+    if not os.path.exists(xRuta_options):
+        # Si no existe el archivo, crearlo con la estructura predeterminada
+        opciones = {
+            "ignore_list": [
+                "archivoIgnorado.txt",  # Ejemplo de archivo ignorado
+            ]
+        }
+        with open(xRuta_options, 'w') as f:
+            json.dump(opciones, f, indent=4)
+        print(f"El archivo {xRuta_options} no existía, se ha creado con la estructura predeterminada.")
+        return opciones['ignore_list']
+    else:
+        try:
+            with open(xRuta_options, 'r') as f:
+                opciones = json.load(f)
+                return opciones.get('ignore_list', [])
+        except Exception as e:
+            print(f"Error leyendo el archivo {xRuta_options}: {e}")
+            exit()
 
 # --- Funciones FTP ---
 
@@ -120,7 +145,7 @@ def crear_estructura_carpetas_ftp(ftp, xOrigen_dir, xCarpeta_principal, xDestino
 
     return xRuta_actual_ftp
 
-def subir_archivos_recursivo(ftp, xRuta_local, xRuta_ftp):
+def subir_archivos_recursivo(ftp, xRuta_local, xRuta_ftp, ignore_list):
     """
     Sube archivos y carpetas recursivamente desde la ruta local al servidor FTP,
     verificando si deben ser ignorados.
@@ -128,13 +153,15 @@ def subir_archivos_recursivo(ftp, xRuta_local, xRuta_ftp):
     for xNombre in os.listdir(xRuta_local):
         if xNombre == "scb.log":
             continue
- 
+
         xRuta_completa_local = os.path.join(xRuta_local, xNombre)
         xRuta_completa_ftp = os.path.join(xRuta_ftp, xNombre).replace("\\", "/")
 
         # Verificar si el archivo o carpeta está en la lista de ignorados
-        if any(ignored in xRuta_completa_local for ignored in IGNORE_LIST):
-            continue  # Ignorar el archivo o carpeta
+        # Ahora verificamos si el archivo o carpeta está exactamente en la lista de ignorados
+        if xNombre in ignore_list:
+            print(f"Ignorando: {xRuta_completa_local}")
+            continue  # Ignorar el archivo o carpeta si está en la lista de ignorados
 
         if os.path.isfile(xRuta_completa_local):
             xFecha_creacion_local = datetime.fromtimestamp(os.path.getctime(xRuta_completa_local))
@@ -167,18 +194,26 @@ def subir_archivos_recursivo(ftp, xRuta_local, xRuta_ftp):
                 except Exception as e:
                     print(f"No se pudo crear la carpeta {xRuta_completa_ftp}: {e}")
 
-            subir_archivos_recursivo(ftp, xRuta_completa_local, xRuta_completa_ftp)
+            subir_archivos_recursivo(ftp, xRuta_completa_local, xRuta_completa_ftp, ignore_list)
+
 
 # --- Programa principal ---
 if __name__ == "__main__":
     xDirectorio_actual = os.getcwd()
     xRuta_config = buscar_archivo_ancestro(ARCHIVO_CONFIG, xDirectorio_actual)
+    xRuta_options = buscar_archivo_ancestro(ARCHIVO_OPTIONS, xDirectorio_actual)
 
     if not xRuta_config:
         print(f"No se encontró el archivo de configuración: {ARCHIVO_CONFIG}")
         exit()
 
+    if not xRuta_options:
+        print(f"No se encontró el archivo de opciones: {ARCHIVO_OPTIONS}")
+        exit()
+
+    # Leer configuración y lista de ignorados
     xConfig = leer_configuracion(xRuta_config)
+    ignore_list = leer_ignore_list(xRuta_options)
     ftp = conectar_ftp(xConfig)
 
     print("Seleccione una opción:")
@@ -188,10 +223,10 @@ if __name__ == "__main__":
     xOpcion = int(input("Ingrese su opción: "))
 
     if xOpcion == 1:
-        subir_archivos_recursivo(ftp, os.getcwd(), '/')
+        subir_archivos_recursivo(ftp, os.getcwd(), '/', ignore_list)
     elif xOpcion == 2:
         xRuta_final_ftp = crear_estructura_carpetas_ftp(ftp, os.getcwd(), os.path.dirname(xRuta_config))
-        subir_archivos_recursivo(ftp, os.getcwd(), xRuta_final_ftp)
+        subir_archivos_recursivo(ftp, os.getcwd(), xRuta_final_ftp, ignore_list)
 
     ftp.quit()
     print("Operación completada con éxito.")
