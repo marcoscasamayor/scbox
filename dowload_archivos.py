@@ -3,52 +3,41 @@ from ftplib import FTP
 import json
 import time
 from datetime import datetime
+import fnmatch
 
 ARCHIVO_CONFIG = 'scb.config'  # Nombre del archivo de configuración
 ARCHIVO_OPCIONES = 'scb.options'  # Nombre del archivo de opciones
 
 def buscar_archivo_ancestro(xNombre_archivo, xDirectorio_actual):
-    """
-    Busca el archivo en el directorio actual y en los directorios ancestrales.
-    """
-    if xNombre_archivo in os.listdir(xDirectorio_actual):
-        return os.path.join(xDirectorio_actual, xNombre_archivo)
-
-    while xDirectorio_actual != os.path.dirname(xDirectorio_actual):
-        xDirectorio_actual = os.path.dirname(xDirectorio_actual)
+    while xDirectorio_actual:
         if xNombre_archivo in os.listdir(xDirectorio_actual):
             return os.path.join(xDirectorio_actual, xNombre_archivo)
-
+        xDirectorio_actual = os.path.dirname(xDirectorio_actual)
     return None
 
 def leer_configuracion(xRuta_config):
-    """
-    Lee el archivo de configuración y lo retorna como un diccionario.
-    """
     try:
         with open(xRuta_config, 'r') as file:
             return json.load(file)
-    except Exception:
+    except Exception as e:
+        print(f"Error al leer configuración: {e}")
         exit()
 
 def leer_opciones(xRuta_opciones):
-    """
-    Lee el archivo de opciones y extrae la lista de archivos a ignorar.
-    """
     try:
         with open(xRuta_opciones, 'r') as file:
             opciones = json.load(file)
             return opciones.get("ignore_list", [])
-    except Exception:
+    except Exception as e:
+        print(f"Error al leer el archivo de opciones: {e}")
         return []
 
 def crear_archivo_opciones(xRuta_opciones):
-    """
-    Crea el archivo 'scb.options' con la estructura predeterminada.
-    """
     opciones = {
         "ignore_list": [
-            "archivoIgnorado.txt",  # Puedes agregar más archivos ignorados aquí
+            "*.zip",
+            "*a",
+            "archivoIgnorado.txt"
         ]
     }
     
@@ -60,62 +49,55 @@ def crear_archivo_opciones(xRuta_opciones):
         print(f"Error al crear el archivo de opciones: {e}")
 
 def conectar_ftp(xConfig):
-    """
-    Conecta al servidor FTP utilizando la configuración proporcionada.
-    """
     ftp = FTP(xConfig['FTP']['ftp_server'])
     ftp.login(user=xConfig['FTP']['ftp_user'], passwd=xConfig['FTP']['ftp_password'])
     return ftp
 
 def obtener_fecha_modificacion_ftp(ftp, archivo):
-    """
-    Obtiene la fecha de modificación de un archivo en el servidor FTP.
-    """
     try:
         respuesta = ftp.sendcmd(f"MDTM {archivo}")
-        fecha_str = respuesta[4:].strip()  # AAAAMMDDHHMMSS
+        fecha_str = respuesta[4:].strip()
         fecha = datetime.strptime(fecha_str, "%Y%m%d%H%M%S")
-        return int(time.mktime(fecha.timetuple()))  # Convertir a timestamp en UTC
+        return int(time.mktime(fecha.timetuple()))
     except Exception:
         return None
 
-def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list):
-    """
-    Descarga archivos de un servidor FTP recursivamente desde una carpeta específica,
-    verificando si los archivos ya existen y están actualizados, y si deben ser ignorados.
-    """
-    os.makedirs(ruta_local, exist_ok=True)
+def descargar_archivos_recursivo(xFtp, xRuta_ftp, xRuta_local, xIgnore_list):
+    os.makedirs(xRuta_local, exist_ok=True)
 
     try:
-        elementos = ftp.nlst(ruta_ftp)
-    except Exception:
+        elementos = xFtp.nlst(xRuta_ftp)
+    except Exception as e:
+        print(f"Error listando elementos en {xRuta_ftp}: {e}")
         return
 
     if not elementos:
         return
 
     for elemento in elementos:
-        ruta_completa_ftp = os.path.join(ruta_ftp, elemento).replace('\\', '/')
-        ruta_completa_local = os.path.join(ruta_local, os.path.basename(elemento))
+        ruta_completa_ftp = os.path.join(xRuta_ftp, elemento).replace('\\', '/')
+        ruta_completa_local = os.path.join(xRuta_local, os.path.basename(elemento))
+        base_name = os.path.basename(ruta_completa_ftp)
 
         if any(part in ['.', '..'] for part in ruta_completa_ftp.split('/')):
             continue
 
-        if any(ignored == os.path.basename(ruta_completa_ftp) for ignored in ignore_list):
+        if any(fnmatch.fnmatch(base_name, pattern) for pattern in xIgnore_list):
+            print(f"Ignorando {base_name} porque coincide con un patrón en ignore_list.")
             continue
 
         try:
-            ftp.cwd(ruta_completa_ftp)
+            xFtp.cwd(ruta_completa_ftp)
             try:
-                ftp.nlst()
+                xFtp.nlst()
                 if not os.path.exists(ruta_completa_local):
                     os.makedirs(ruta_completa_local)
                     print(f"Carpeta creada: {ruta_completa_local}")
-                descargar_archivos_recursivo(ftp, ruta_completa_ftp, ruta_completa_local, ignore_list)
+                descargar_archivos_recursivo(xFtp, ruta_completa_ftp, ruta_completa_local, xIgnore_list)
             except Exception:
                 continue
         except Exception:
-            fecha_ftp = obtener_fecha_modificacion_ftp(ftp, ruta_completa_ftp)
+            fecha_ftp = obtener_fecha_modificacion_ftp(xFtp, ruta_completa_ftp)
             if fecha_ftp:
                 if os.path.exists(ruta_completa_local):
                     fecha_local = int(os.path.getmtime(ruta_completa_local))
@@ -127,25 +109,26 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list):
                     print(f"Archivo creado: {ruta_completa_local}")
                 try:
                     with open(ruta_completa_local, 'wb') as archivo_local:
-                        ftp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)
+                        xFtp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)
                     os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Error al descargar {ruta_completa_ftp}: {e}")
 
 if __name__ == "__main__":
     ruta_config = buscar_archivo_ancestro(ARCHIVO_CONFIG, os.getcwd())
     if not ruta_config:
+        print("No se encontró el archivo de configuración. Saliendo...")
         exit()
     
     ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPCIONES, os.getcwd())
-    if not ruta_opciones:
-        # Si no se encuentra el archivo de opciones, se crea con la estructura predeterminada.
-        ruta_opciones = os.path.join(os.path.dirname(ruta_config), ARCHIVO_OPCIONES)
-        crear_archivo_opciones(ruta_opciones)
-        ignore_list = []  # Por defecto, la lista de ignorados estará vacía
-    else:
+
+    if ruta_opciones:
+        print(f"Usando archivo de opciones existente en: {ruta_opciones}")
         ignore_list = leer_opciones(ruta_opciones)
-    
+    else:
+        print(f"No se encontró el archivo de opciones.")
+        ignore_list = []
+
     carpeta_inicio = os.path.dirname(ruta_config)
     os.chdir(carpeta_inicio)
 
