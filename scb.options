@@ -1,0 +1,13 @@
+{
+  "ignore_list": [
+    "*a",
+    "*.zip",
+    "Archivo5Origen.txt",
+    "Archivo1Origen.txt",
+    ".gitPrueba",
+    ".ftpquota",
+    ".git",
+    "__pycache__",
+    "node_modules"
+  ]
+}
