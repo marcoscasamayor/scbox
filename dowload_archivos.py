@@ -12,7 +12,8 @@ def buscar_archivo_ancestro(xNombre_archivo, xDirectorio_actual):
     """
     Busca el archivo de configuración en el directorio actual y en los directorios ancestrales.
     """
-    while xDirectorio_actual:  # Bucle hasta que el directorio actual sea None
+    while xDirectorio_actual and xDirectorio_actual != os.path.dirname(xDirectorio_actual):  # Bucle hasta que el directorio actual sea None o la raíz
+
         if xNombre_archivo in os.listdir(xDirectorio_actual):  # Verifica si el archivo existe en el directorio actual
             return os.path.join(xDirectorio_actual, xNombre_archivo)  # Devuelve la ruta completa si se encuentra
         xDirectorio_actual = os.path.dirname(xDirectorio_actual)  # Mueve al directorio padre
@@ -142,7 +143,22 @@ if __name__ == "__main__":  # La ejecución del programa principal comienza aqu�
         print("No se encontró el archivo de configuración. Saliendo...")  # Imprime mensaje de error
         exit()  # Sale del programa
     
-    ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPCIONES, os.getcwd())  # Busca el archivo de opciones
+    ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPCIONES, os.path.dirname(ruta_config))  # Busca el archivo de opciones en el mismo directorio que scb.config
+
+    if not ruta_opciones:  # Si no se encuentra el archivo de opciones
+        crear_archivo_opciones(os.path.join(os.path.dirname(ruta_config), ARCHIVO_OPCIONES))  # Crea el archivo de opciones en el mismo directorio que scb.config
+        ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPCIONES, os.path.dirname(ruta_config))  # Busca nuevamente el archivo de opciones
+
+
+    if not ruta_opciones:  # Si no se encuentra el archivo de opciones
+        crear_archivo_opciones(ARCHIVO_OPCIONES)  # Crea el archivo de opciones
+        ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPCIONES, os.getcwd())  # Busca nuevamente el archivo de opciones
+
+
+    if not ruta_opciones:  # Si no se encuentra el archivo de opciones
+        crear_archivo_opciones(ARCHIVO_OPCIONES)  # Crea el archivo de opciones
+        ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPCIONES, os.getcwd())  # Busca nuevamente el archivo de opciones
+
 
     if ruta_opciones:  # Si se encuentra el archivo de opciones
         print(f"Usando archivo de opciones existente en: {ruta_opciones}")  # Imprime mensaje de éxito

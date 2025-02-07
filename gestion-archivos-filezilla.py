@@ -208,7 +208,13 @@ if __name__ == "__main__":  # La ejecución del programa principal comienza aqu�
 
     if not xRuta_options:  # Si no se encuentra el archivo de opciones
         print(f"No se encontró el archivo de opciones: {ARCHIVO_OPTIONS}")  # Imprime mensaje de error
-        exit()  # Sale del programa
+        leer_ignore_list(os.path.join(os.path.dirname(xRuta_config), ARCHIVO_OPTIONS))  # Crea el archivo de opciones con la estructura predeterminada
+        xRuta_options = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.path.dirname(xRuta_config))  # Busca nuevamente el archivo de opciones
+
+        xRuta_options = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.path.dirname(xRuta_config))  # Busca nuevamente el archivo de opciones
+
+        xRuta_options = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.path.dirname(xRuta_config))  # Busca nuevamente el archivo de opciones
+
 
     # Leer configuración y lista de ignorados
     xConfig = leer_configuracion(xRuta_config)  # Lee la configuración
