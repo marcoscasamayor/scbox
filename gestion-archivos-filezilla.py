@@ -47,7 +47,7 @@ def leer_ignore_list(xRuta_options):
         # Si no existe el archivo, crearlo con la estructura predeterminada
         opciones = {
             "ignore_list": [
-                "archivoIgnorado.txt",  # Ejemplo de archivo ignorado
+                "ejemplo123.txt",  # Ejemplo de archivo ignorado
             ]
         }
         with open(xRuta_options, 'w') as f:  # Abre el archivo de opciones para escritura

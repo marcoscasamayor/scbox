@@ -48,9 +48,7 @@ def crear_archivo_opciones(xRuta_opciones):
     """
     opciones = {
         "ignore_list": [
-            "*.zip",  # Ignorar archivos zip
-            "*a",  # Ignorar archivos que terminan en 'a'
-            "archivoIgnorado.txt"  # Ejemplo de archivo ignorado
+            "ejemplo123.txt"  # Ejemplo de archivo ignorado
         ]
     }
     
