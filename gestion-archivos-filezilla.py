@@ -66,15 +66,18 @@ def leer_ignore_list(xRuta_options):
 # --- Funciones FTP ---
 
 def conectar_ftp(xConfig):
+
+
     """
     Conecta al servidor FTP utilizando la configuración proporcionada.
     """
     ftp = FTP(xConfig['FTP']['ftp_server'])  # Crea un objeto FTP con la dirección del servidor
     ftp.login(user=xConfig['FTP']['ftp_user'], passwd=xConfig['FTP']['ftp_password'])  # Inicia sesión con las credenciales del usuario
-    print(f"Conectado al servidor FTP: {xConfig['FTP']['ftp_server']}")  # Imprime mensaje de éxito
+    print(f"Conectado a repositorio SCBOX")  # Imprime mensaje de éxito
     return ftp  # Devuelve el objeto FTP
 
 def agregar_historial_log(xContenido_existente, xUsuario, xAccion, xTipo, xDescripcion):
+
     """
     Agrega una nueva línea al historial del log con la información proporcionada.
     """
@@ -85,12 +88,14 @@ def agregar_historial_log(xContenido_existente, xUsuario, xAccion, xTipo, xDescr
     )
     return f"{xContenido_existente}\n{xLinea_historial}"  # Devuelve el contenido del log actualizado
 
-def crear_scb_log(ftp, xRuta_ftp=None, xAccion=None, xDescripcion=None, tipo="archivo"):
+def crear_scb_log(xFtp, xRuta_ftp=None, xAccion=None, xDescripcion=None, tipo="archivo"):
+
+
     """
     Crea o actualiza el archivo de log en el servidor FTP.
     """
     if xRuta_ftp is None:  # Si no se proporciona la ruta FTP, usar el directorio de trabajo actual
-        xRuta_ftp = ftp.pwd()
+        xRuta_ftp = xFtp.pwd()
 
     xUsuario = getpass.getuser()  # Obtiene el nombre de usuario del usuario actual
     xRuta_log = f"{xRuta_ftp}/scb.log"  # Define la ruta del archivo de log
@@ -99,7 +104,7 @@ def crear_scb_log(ftp, xRuta_ftp=None, xAccion=None, xDescripcion=None, tipo="ar
     xContenido_existente = ""  # Inicializa el contenido existente del log
     try:
         with io.BytesIO() as archivo_existente:  # Crea un flujo de bytes para el log existente
-            ftp.retrbinary(f"RETR {xRuta_log}", archivo_existente.write)  # Recupera el log existente del servidor FTP
+            xFtp.retrbinary(f"RETR {xRuta_log}", archivo_existente.write)  # Recupera el log existente del servidor FTP
             xContenido_existente = archivo_existente.getvalue().decode('utf-8')  # Decodifica el contenido del log
     except Exception:
         xContenido_existente = xEncabezado_log  # Si el log no existe, usar el encabezado como contenido
@@ -109,19 +114,23 @@ def crear_scb_log(ftp, xRuta_ftp=None, xAccion=None, xDescripcion=None, tipo="ar
     else:
         xContenido_actualizado = xContenido_existente  # Usa el contenido existente si no se necesitan actualizaciones
 
-    ftp.storbinary(f"STOR {xRuta_log}", io.BytesIO(xContenido_actualizado.encode('utf-8')))  # Almacena el log actualizado en el servidor FTP
+    xFtp.storbinary(f"STOR {xRuta_log}", io.BytesIO(xContenido_actualizado.encode('utf-8')))  # Almacena el log actualizado en el servidor FTP
 
-def set_fecha_modificacion(ftp, xRuta_ftp, xFecha_local):
+def set_fecha_modificacion(xFtp, xRuta_ftp, xFecha_local):
+
+
     """
     Establece la fecha de modificación del archivo en el servidor FTP.
     """
     try:
         comando_mfmt = f"MFMT {xFecha_local.strftime('%Y%m%d%H%M%S')} {xRuta_ftp}"  # Crea el comando para establecer la fecha de modificación
-        ftp.sendcmd(comando_mfmt)  # Envía el comando al servidor FTP
+        xFtp.sendcmd(comando_mfmt)  # Envía el comando al servidor FTP
     except Exception as e:
         print(f"No se pudo modificar la fecha para {xRuta_ftp}: {e}")  # Imprime mensaje de error si falla la modificación
 
-def crear_estructura_carpetas_ftp(ftp, xOrigen_dir, xCarpeta_principal, xDestino_dir_ftp='/'):
+def crear_estructura_carpetas_ftp(xFtp, xOrigen_dir, xCarpeta_principal, xDestino_dir_ftp='/'):
+
+
     """
     Crea la estructura de carpetas en el servidor FTP basada en las carpetas locales.
     """
@@ -133,11 +142,11 @@ def crear_estructura_carpetas_ftp(ftp, xOrigen_dir, xCarpeta_principal, xDestino
         if xCarpeta:  # Si el nombre de la carpeta no está vacío
             xRuta_actual_ftp = os.path.join(xRuta_actual_ftp, xCarpeta).replace("\\", "/")  # Actualiza la ruta actual en FTP
             try:
-                ftp.cwd(xRuta_actual_ftp)  # Cambia al directorio FTP actual
-                ftp.cwd("..")  # Mueve al directorio padre
+                xFtp.cwd(xRuta_actual_ftp)  # Cambia al directorio FTP actual
+                xFtp.cwd("..")  # Mueve al directorio padre
             except Exception:
                 try:
-                    ftp.mkd(xRuta_actual_ftp)  # Crea la carpeta en el servidor FTP
+                    xFtp.mkd(xRuta_actual_ftp)  # Crea la carpeta en el servidor FTP
                     crear_scb_log(ftp, xRuta_actual_ftp, "creó", xCarpeta, tipo="carpeta")  # Registra la creación de la carpeta
                     print(f"Carpeta creada: {xRuta_actual_ftp}")  # Imprime mensaje de éxito
                 except Exception as e:
@@ -145,7 +154,9 @@ def crear_estructura_carpetas_ftp(ftp, xOrigen_dir, xCarpeta_principal, xDestino
 
     return xRuta_actual_ftp  # Devuelve la ruta actual en FTP
 
-def subir_archivos_recursivo(ftp, xRuta_local, xRuta_ftp, ignore_list):
+def subir_archivos_recursivo(xFtp, xRuta_local, xRuta_ftp, xIgnore_list):
+
+
     """
     Sube archivos y carpetas recursivamente desde la ruta local al servidor FTP,
     verificando si deben ser ignorados.
@@ -158,42 +169,42 @@ def subir_archivos_recursivo(ftp, xRuta_local, xRuta_ftp, ignore_list):
         xRuta_completa_ftp = os.path.join(xRuta_ftp, xNombre).replace("\\", "/")  # Obtiene la ruta completa en FTP
 
         # Verifica si el archivo o carpeta está en la lista de ignorados
-        if xNombre in ignore_list:  # Si el nombre está en la lista de ignorados
+        if xNombre in xIgnore_list:  # Si el nombre está en la lista de ignorados
             print(f"Ignorando: {xRuta_completa_local}")  # Imprime mensaje de ignorar
             continue  # Salta al siguiente elemento
 
         if os.path.isfile(xRuta_completa_local):  # Si el elemento es un archivo
             xFecha_creacion_local = datetime.fromtimestamp(os.path.getctime(xRuta_completa_local))  # Obtiene la fecha de creación del archivo local
             try:
-                xTamaño_archivo_ftp = ftp.size(xRuta_completa_ftp)  # Obtiene el tamaño del archivo en el servidor FTP
+                xTamaño_archivo_ftp = xFtp.size(xRuta_completa_ftp)  # Obtiene el tamaño del archivo en el servidor FTP
                 xTamaño_archivo_local = os.path.getsize(xRuta_completa_local)  # Obtiene el tamaño del archivo local
 
                 if xTamaño_archivo_local != xTamaño_archivo_ftp:  # Si los tamaños son diferentes
                     with open(xRuta_completa_local, 'rb') as file:  # Abre el archivo local para lectura
-                        ftp.storbinary(f'STOR {xRuta_completa_ftp}', file)  # Sube el archivo al servidor FTP
-                    set_fecha_modificacion(ftp, xRuta_completa_ftp, xFecha_creacion_local)  # Establece la fecha de modificación en el servidor FTP
-                    crear_scb_log(ftp, xRuta_ftp, "actualizó", xNombre, tipo="archivo")  # Registra la actualización del archivo
+                        xFtp.storbinary(f'STOR {xRuta_completa_ftp}', file)  # Sube el archivo al servidor FTP
+                    set_fecha_modificacion(xFtp, xRuta_completa_ftp, xFecha_creacion_local)  # Establece la fecha de modificación en el servidor FTP
+                    crear_scb_log(xFtp, xRuta_ftp, "actualizó", xNombre, tipo="archivo")  # Registra la actualización del archivo
                     
                     print(f"Archivo actualizado: {xRuta_completa_local} -> {xRuta_completa_ftp}")  # Imprime mensaje de actualización
             except Exception:
                 with open(xRuta_completa_local, 'rb') as file:  # Abre el archivo local para lectura
-                    ftp.storbinary(f'STOR {xRuta_completa_ftp}', file)  # Sube el archivo al servidor FTP
-                set_fecha_modificacion(ftp, xRuta_completa_ftp, xFecha_creacion_local)  # Establece la fecha de modificación en el servidor FTP
-                crear_scb_log(ftp, xRuta_ftp, "creó", xNombre, tipo="archivo")  # Registra la creación del archivo
+                    xFtp.storbinary(f'STOR {xRuta_completa_ftp}', file)  # Sube el archivo al servidor FTP
+                set_fecha_modificacion(xFtp, xRuta_completa_ftp, xFecha_creacion_local)  # Establece la fecha de modificación en el servidor FTP
+                crear_scb_log(xFtp, xRuta_ftp, "creó", xNombre, tipo="archivo")  # Registra la creación del archivo
                 print(f"Archivo creado: {xRuta_completa_local} -> {xRuta_completa_ftp}")  # Imprime mensaje de creación
         elif os.path.isdir(xRuta_completa_local):  # Si el elemento es un directorio
             try:
-                ftp.cwd(xRuta_completa_ftp)  # Cambia al directorio FTP
-                ftp.cwd("..")  # Mueve al directorio padre
+                xFtp.cwd(xRuta_completa_ftp)  # Cambia al directorio FTP
+                xFtp.cwd("..")  # Mueve al directorio padre
             except Exception:
                 try:
-                    ftp.mkd(xRuta_completa_ftp)  # Crea el directorio en el servidor FTP
-                    crear_scb_log(ftp, xRuta_ftp, "creó", xNombre, tipo="carpeta")  # Registra la creación de la carpeta
+                    xFtp.mkd(xRuta_completa_ftp)  # Crea el directorio en el servidor FTP
+                    crear_scb_log(xFtp, xRuta_ftp, "creó", xNombre, tipo="carpeta")  # Registra la creación de la carpeta
                     print(f"Carpeta creada en FTP: {xRuta_completa_ftp}")  # Imprime mensaje de éxito
                 except Exception as e:
                     print(f"No se pudo crear la carpeta {xRuta_completa_ftp}: {e}")  # Imprime mensaje de error si falla la creación
 
-            subir_archivos_recursivo(ftp, xRuta_completa_local, xRuta_completa_ftp, ignore_list)  # Llamada recursiva para subir archivos en el directorio
+            subir_archivos_recursivo(xFtp, xRuta_completa_local, xRuta_completa_ftp, xIgnore_list)  # Llamada recursiva para subir archivos en el directorio
 
 
 # --- Programa principal ---
@@ -221,17 +232,10 @@ if __name__ == "__main__":  # La ejecución del programa principal comienza aqu�
     ignore_list = leer_ignore_list(xRuta_options)  # Lee la lista de ignorados
     ftp = conectar_ftp(xConfig)  # Conecta al servidor FTP
 
-    print("Seleccione una opción:")  # Solicita al usuario una acción
-    print("1. Copiar archivo desde origen a servidor FTP y actualizar scb.log.")  # Opción 1
-    print("2. Sincronizar carpetas entre origen y servidor FTP y actualizar scb.log.")  # Opción 2
+    # Ejecutar directamente la opción 2
+    xRuta_final_ftp = crear_estructura_carpetas_ftp(ftp, os.getcwd(), os.path.dirname(xRuta_config))  # Crea la estructura de carpetas en FTP
+    subir_archivos_recursivo(ftp, os.getcwd(), xRuta_final_ftp, ignore_list)  # Comienza a subir archivos
 
-    xOpcion = int(input("Ingrese su opción: "))  # Obtiene la entrada del usuario para la opción
-
-    if xOpcion == 1:  # Si se selecciona la opción 1
-        subir_archivos_recursivo(ftp, os.getcwd(), '/', ignore_list)  # Comienza a subir archivos
-    elif xOpcion == 2:  # Si se selecciona la opción 2
-        xRuta_final_ftp = crear_estructura_carpetas_ftp(ftp, os.getcwd(), os.path.dirname(xRuta_config))  # Crea la estructura de carpetas en FTP
-        subir_archivos_recursivo(ftp, os.getcwd(), xRuta_final_ftp, ignore_list)  # Comienza a subir archivos
 
     ftp.quit()  # Desconecta del servidor FTP
     print("Operación completada con éxito.")  # Imprime mensaje de éxito
