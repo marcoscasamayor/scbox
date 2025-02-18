@@ -194,8 +194,9 @@ def obtener_fecha_modificacion_ftp(ftp, archivo):
 
 def descargar_archivos_recursivo(xFtp, xRuta_ftp, xRuta_local, xIgnore_list):
     """Descarga archivos y carpetas recursivamente desde el servidor FTP."""
-    os.makedirs(xRuta_local, exist_ok=True)
-
+    # Obtener la ruta base FTP para calcular rutas relativas
+    ruta_base_ftp = xFtp.pwd()
+    
     try:
         elementos = xFtp.nlst(xRuta_ftp)
     except Exception as e:
@@ -207,9 +208,13 @@ def descargar_archivos_recursivo(xFtp, xRuta_ftp, xRuta_local, xIgnore_list):
 
     for elemento in elementos:
         ruta_completa_ftp = os.path.join(xRuta_ftp, elemento).replace('\\', '/')
-        ruta_completa_local = os.path.join(xRuta_local, os.path.basename(elemento))
+        # Calcular ruta relativa respecto a la base FTP
+        ruta_relativa = os.path.relpath(ruta_completa_ftp, ruta_base_ftp)
+        # Crear ruta local manteniendo la estructura de carpetas
+        ruta_completa_local = os.path.join(xRuta_local, ruta_relativa)
         base_name = os.path.basename(ruta_completa_ftp)
 
+        # Ignorar directorios especiales y archivos en la lista de ignorados
         if any(part in ['.', '..'] for part in ruta_completa_ftp.split('/')):
             continue
 
@@ -218,15 +223,36 @@ def descargar_archivos_recursivo(xFtp, xRuta_ftp, xRuta_local, xIgnore_list):
             continue
 
         try:
+            # Verificar si es un directorio
             xFtp.cwd(ruta_completa_ftp)
             try:
-                xFtp.nlst()
-                if not os.path.exists(ruta_completa_local):
-                    os.makedirs(ruta_completa_local)
-                    print(f"Carpeta creada: {ruta_completa_local}")
-                descargar_archivos_recursivo(xFtp, ruta_completa_ftp, ruta_completa_local, xIgnore_list)
+                xFtp.nlst()  # Si no falla, es un directorio
+                # Crear directorio local manteniendo la estructura
+                os.makedirs(ruta_completa_local, exist_ok=True)
+                print(f"Carpeta creada: {ruta_completa_local}")
+                # Descargar contenido del directorio
+                descargar_archivos_recursivo(xFtp, ruta_completa_ftp, xRuta_local, xIgnore_list)
             except Exception:
-                continue
+                # Si falla, es un archivo
+                fecha_ftp = obtener_fecha_modificacion_ftp(xFtp, ruta_completa_ftp)
+                if fecha_ftp:
+                    if os.path.exists(ruta_completa_local):
+                        fecha_local = int(os.path.getmtime(ruta_completa_local))
+                        if fecha_local >= fecha_ftp:
+                            continue
+                        else:
+                            print(f"Archivo actualizado: {ruta_completa_local}")
+                    else:
+                        print(f"Archivo creado: {ruta_completa_local}")
+                    try:
+                        # Crear directorio padre si no existe
+                        os.makedirs(os.path.dirname(ruta_completa_local), exist_ok=True)
+                        with open(ruta_completa_local, 'wb') as archivo_local:
+                            xFtp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)
+                        os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))
+                    except Exception as e:
+                        print(f"Error al descargar {ruta_completa_ftp}: {e}")
+
         except Exception:
             fecha_ftp = obtener_fecha_modificacion_ftp(xFtp, ruta_completa_ftp)
             if fecha_ftp:
