@@ -7,6 +7,7 @@ import getpass
 import time
 import fnmatch
 import sys
+import os
 
 ARCHIVO_CONFIG = 'scb.config'  # Nombre del archivo de configuración
 ARCHIVO_OPTIONS = 'scb.options'  # Nombre del archivo de opciones
@@ -303,7 +304,7 @@ def subir_archivos_recursivo(xFtp, xRuta_local, xRuta_ftp, xIgnore_list):
             subir_archivos_recursivo(xFtp, xRuta_completa_local, xRuta_completa_ftp, xIgnore_list)  # Llamada recursiva para subir archivos en el directorio
 
 
-import os
+
 
 # Función que maneja la subida de archivos (sin cambiar la lógica original)
 def subir_archivos():
@@ -380,9 +381,12 @@ def main():
     operacion = sys.argv[1].strip().lower()
 
     if operacion == "u":
+        print("Iniciando Upload..")
         subir_archivos()  # Llamada a la función de subida
     elif operacion == "d":
+        print("Iniciando Dowload..")
         bajar_archivos()  # Llamada a la función de bajada
+        
     else:
         print("Opción no válida. Debes ingresar 'u' para subir o 'd' para bajar.")
         exit()
