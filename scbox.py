@@ -371,9 +371,8 @@ def bajar_archivos():
     ftp.quit()  # Desconecta del servidor FTP
     print("Operación de descarga completada con éxito.")  # Imprime mensaje de éxito
 
-# Main que adapta ambos flujos de acuerdo a la opción seleccionada
+
 def main():
-    # Check for command-line arguments
     if len(sys.argv) != 2:
         print("Uso: scbox [u|d]")
         exit()
@@ -386,6 +385,11 @@ def main():
     elif operacion == "d":
         print("Iniciando Dowload..")
         bajar_archivos()  # Llamada a la función de bajada
+        
+    elif operacion == "s":
+        print("Iniciando Sincronizacion..")
+        bajar_archivos() 
+        subir_archivos()  
         
     else:
         print("Opción no válida. Debes ingresar 'u' para subir o 'd' para bajar.")
