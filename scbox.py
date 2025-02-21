@@ -357,16 +357,21 @@ def bajar_archivos():
         print("No se encontró el archivo de opciones.")
         ignore_list = []  # Establece la lista de ignorados como vacía
 
-    carpeta_inicio = os.path.dirname(ruta_config)  # Obtiene el directorio del archivo de configuración
-    os.chdir(carpeta_inicio)  # Cambia a ese directorio
-
     config = leer_configuracion(ruta_config)  # Lee la configuración
     ftp = conectar_ftp(config)  # Conecta al servidor FTP
 
-    ruta_inicial_ftp = ftp.pwd()  # Obtiene la ruta inicial en FTP
+    # Obtener la ruta relativa desde el directorio de configuración al directorio actual
+    ruta_relativa = os.path.relpath(os.getcwd(), os.path.dirname(ruta_config))
+    ruta_inicial_ftp = os.path.join(ftp.pwd(), ruta_relativa).replace('\\', '/')  # Ruta FTP correspondiente al directorio actual
     ruta_local = os.getcwd()  # Obtiene la ruta local actual
 
-    descargar_archivos_recursivo(ftp, ruta_inicial_ftp, ruta_local, ignore_list)  # Comienza a descargar archivos
+
+    # Obtener la ruta relativa desde el directorio de configuración al actual
+    ruta_relativa = os.path.relpath(ruta_local, os.path.dirname(ruta_config))
+    ruta_ftp_descarga = os.path.join(ruta_inicial_ftp, ruta_relativa).replace('\\', '/')
+    
+    descargar_archivos_recursivo(ftp, ruta_ftp_descarga, ruta_local, ignore_list)  # Comienza a descargar archivos
+
 
     ftp.quit()  # Desconecta del servidor FTP
     print("Operación de descarga completada con éxito.")  # Imprime mensaje de éxito
