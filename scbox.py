@@ -108,7 +108,7 @@ def crear_estructura_carpetas_ftp(xFtp, xOrigen_dir, xCarpeta_principal, xDestin
             except Exception:
                 try:
                     xFtp.mkd(xRuta_actual_ftp)  # Crea la carpeta en el servidor FTP
-                    crear_scb_log(ftp, xRuta_actual_ftp, "creó", xCarpeta, tipo="carpeta")  # Registra la creación de la carpeta
+                    crear_scb_log(xFtp, xRuta_actual_ftp, "creó", xCarpeta, tipo="carpeta")  # Registra la creación de la carpeta
                     print(f"Carpeta creada: {xRuta_actual_ftp}")  # Imprime mensaje de éxito
                 except Exception as e:
                     print(f"No se pudo crear la carpeta {xRuta_actual_ftp}: {e}")  # Imprime mensaje de error si falla la creación
@@ -368,8 +368,12 @@ def bajar_archivos():
 
     # Obtener la ruta relativa desde el directorio de configuración al actual
     ruta_relativa = os.path.relpath(ruta_local, os.path.dirname(ruta_config))
-    ruta_ftp_descarga = os.path.join(ruta_inicial_ftp, ruta_relativa).replace('\\', '/')
-    
+    ruta_ftp_descarga = ruta_inicial_ftp  # Evita la duplicación
+
+    print(f"ruta_inicial_ftp: {ruta_inicial_ftp}")
+    print(f"ruta_relativa: {ruta_relativa}")
+    print(f"ruta_ftp_descarga: {ruta_ftp_descarga}")
+
     descargar_archivos_recursivo(ftp, ruta_ftp_descarga, ruta_local, ignore_list)  # Comienza a descargar archivos
 
 
