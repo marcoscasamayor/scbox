@@ -336,49 +336,41 @@ def subir_archivos():
 # Función que maneja la bajada de archivos (sin cambiar la lógica original)
 def bajar_archivos():
     ruta_config = buscar_archivo_ancestro(ARCHIVO_CONFIG, os.getcwd())  # Busca el archivo de configuración
-    if not ruta_config:  # Si no se encuentra el archivo de configuración
+    if not ruta_config:
         print("No se encontró el archivo de configuración. Saliendo...")
         exit()
 
-    ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.path.dirname(ruta_config))  # Busca el archivo de opciones en el mismo directorio que scb.config
+    ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.path.dirname(ruta_config))
+    if not ruta_opciones:
+        crear_archivo_opciones(os.path.join(os.path.dirname(ruta_config), ARCHIVO_OPTIONS))
+        ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.path.dirname(ruta_config))
 
-    if not ruta_opciones:  # Si no se encuentra el archivo de opciones
-        crear_archivo_opciones(os.path.join(os.path.dirname(ruta_config), ARCHIVO_OPTIONS))  # Crea el archivo de opciones
-        ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.path.dirname(ruta_config))  # Busca nuevamente el archivo de opciones
-
-    if not ruta_opciones:  # Si no se encuentra el archivo de opciones
-        crear_archivo_opciones(ARCHIVO_OPTIONS)  # Crea el archivo de opciones
-        ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.getcwd())  # Busca nuevamente el archivo de opciones
-
-    if ruta_opciones:  # Si se encuentra el archivo de opciones
+    if ruta_opciones:
         print(f"Usando archivo de opciones existente en: {ruta_opciones}")
-        ignore_list = leer_opciones(ruta_opciones)  # Lee la lista de ignorados
+        ignore_list = leer_opciones(ruta_opciones)
     else:
         print("No se encontró el archivo de opciones.")
-        ignore_list = []  # Establece la lista de ignorados como vacía
+        ignore_list = []
 
-    config = leer_configuracion(ruta_config)  # Lee la configuración
-    ftp = conectar_ftp(config)  # Conecta al servidor FTP
+    config = leer_configuracion(ruta_config)
+    ftp = conectar_ftp(config)
 
-    # Obtener la ruta relativa desde el directorio de configuración al directorio actual
-    ruta_relativa = os.path.relpath(os.getcwd(), os.path.dirname(ruta_config))
-    ruta_inicial_ftp = os.path.join(ftp.pwd(), ruta_relativa).replace('\\', '/')  # Ruta FTP correspondiente al directorio actual
-    ruta_local = os.getcwd()  # Obtiene la ruta local actual
+    # 🔥 CORRECCIÓN: Mejor cálculo de la ruta FTP inicial
+    directorio_base = os.path.dirname(ruta_config)  # Directorio donde está scb.config
+    ruta_relativa = os.path.relpath(os.getcwd(), directorio_base)  # Relación entre cwd y base
 
+    # Si ruta_relativa es ".", significa que estamos en la base, no concatenamos nada
+    ruta_inicial_ftp = ftp.pwd() if ruta_relativa == "." else os.path.join(ftp.pwd(), ruta_relativa).replace('\\', '/')
 
-    # Obtener la ruta relativa desde el directorio de configuración al actual
-    ruta_relativa = os.path.relpath(ruta_local, os.path.dirname(ruta_config))
-    ruta_ftp_descarga = ruta_inicial_ftp  # Evita la duplicación
+    ruta_local = os.getcwd()
 
-    print(f"ruta_inicial_ftp: {ruta_inicial_ftp}")
-    print(f"ruta_relativa: {ruta_relativa}")
-    print(f"ruta_ftp_descarga: {ruta_ftp_descarga}")
+    print(f"Ruta FTP desde donde se descargará: {ruta_inicial_ftp}")
+    print(f"Ruta local destino: {ruta_local}")
 
-    descargar_archivos_recursivo(ftp, ruta_ftp_descarga, ruta_local, ignore_list)  # Comienza a descargar archivos
+    descargar_archivos_recursivo(ftp, ruta_inicial_ftp, ruta_local, ignore_list)
 
-
-    ftp.quit()  # Desconecta del servidor FTP
-    print("Operación de descarga completada con éxito.")  # Imprime mensaje de éxito
+    ftp.quit()
+    print("Operación de descarga completada con éxito.")
 
 
 def main():
