@@ -370,7 +370,7 @@ def sincronizar_archivos():
                 with open(ruta_completa_local, 'wb') as file:
                     ftp.retrbinary(f'RETR {ruta_completa_ftp}', file.write)
                 os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))
-                print(f"Descargado: {ruta_completa_local}")
+                
     
     def sincronizar_desde_local(ftp, ruta_local, ruta_ftp):
         """Sube archivos y carpetas a FTP si son más nuevos o no existen en FTP."""
@@ -396,7 +396,7 @@ def sincronizar_archivos():
                 
                 with open(ruta_completa_local, 'rb') as file:
                     ftp.storbinary(f'STOR {ruta_completa_ftp}', file)
-                print(f"Subido: {ruta_completa_local}")
+                
     
     sincronizar_desde_ftp(ftp, ruta_inicial_ftp, ruta_local)
     sincronizar_desde_local(ftp, ruta_local, ruta_inicial_ftp)
