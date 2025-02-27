@@ -9,6 +9,7 @@ import time
 import fnmatch
 import sys
 import os
+from datetime import datetime, timezone, timedelta
 
 ARCHIVO_CONFIG = 'scb.config'  # Nombre del archivo de configuración
 ARCHIVO_OPTIONS = 'scb.options'  # Nombre del archivo de opciones
@@ -307,10 +308,8 @@ def subir_archivos_recursivo(xFtp, xRuta_local, xRuta_ftp, xIgnore_list):
 
 def sincronizar_archivos():
     """
-    Sincroniza archivos entre el sistema local y el servidor FTP.
-    Si un archivo existe en ambas ubicaciones, el más nuevo gana.
-    Si un archivo no existe en una de las ubicaciones, se copia desde la otra.
-    También sincroniza directorios de forma recursiva.
+    Sincroniza archivos entre el sistema local y el servidor FTP de forma bidireccional.
+    Convierte las fechas del servidor FTP (UTC) a la zona horaria de Argentina (UTC-3) antes de compararlas.
     """
     ruta_config = buscar_archivo_ancestro(ARCHIVO_CONFIG, os.getcwd())
     if not ruta_config:
@@ -331,99 +330,78 @@ def sincronizar_archivos():
     ruta_local = directorio_base if ruta_relativa == "." else os.path.join(directorio_base, ruta_relativa)
     ruta_inicial_ftp = ftp.pwd().rstrip('/')
 
-    print(f"Sincronizando desde {ruta_inicial_ftp} hacia {ruta_local} y viceversa")
+    print(f"Sincronizando bidireccionalmente entre {ruta_local} y {ruta_inicial_ftp}")
+
+    def ajustar_fecha_utc_a_arg(fecha_utc):
+        """Convierte un timestamp UTC a UTC-3."""
+        return fecha_utc - (3 * 3600) if fecha_utc else 0
 
     def listar_elementos_ftp(ftp, ruta):
         try:
             return ftp.mlsd(ruta)
-        except ftplib.error_perm as e:
-            if "550" in str(e):
-                print(f"MLSD no permitido, intentando con NLST en {ruta}")
-                try:
-                    return [(nombre, {"type": "file"}) for nombre in ftp.nlst(ruta)]
-                except Exception as e:
-                    print(f"Error listando elementos con NLST en {ruta}: {e}")
-                    return []
-            print(f"Error listando elementos en {ruta}: {e}")
-            return []
+        except ftplib.error_perm:
+            try:
+                return [(nombre, {"type": "file"}) for nombre in ftp.nlst(ruta)]
+            except Exception:
+                return []
 
-    def sincronizar_recursivo(ftp, ruta_ftp, ruta_local):
-        """ Sincroniza archivos en ambas direcciones: FTP -> Local y Local -> FTP. """
+    def sincronizar_desde_ftp(ftp, ruta_ftp, ruta_local):
+        """Descarga archivos y carpetas desde FTP si son más nuevos o no existen en local."""
+        elementos = listar_elementos_ftp(ftp, ruta_ftp)
         if not os.path.exists(ruta_local):
             os.makedirs(ruta_local, exist_ok=True)
 
-        elementos_ftp = {nombre: info for nombre, info in listar_elementos_ftp(ftp, ruta_ftp)}
-        elementos_locales = set(os.listdir(ruta_local))
-
-        # Sincronizar archivos desde FTP hacia Local y viceversa
-        for nombre in elementos_ftp.keys() | elementos_locales:
-            if nombre in ['.', '..'] or any(fnmatch.fnmatch(nombre, pattern) for pattern in ignore_list):
+        for nombre, info in elementos:
+            if nombre in ['.', '..'] or nombre in ignore_list:
                 continue
-
-            ruta_completa_ftp = f"{ruta_ftp}/{nombre}".replace('//', '/')
+            
+            ruta_completa_ftp = f"{ruta_ftp}/{nombre}"
             ruta_completa_local = os.path.join(ruta_local, nombre)
 
-            if nombre in elementos_ftp and nombre in elementos_locales:
-                if os.path.isdir(ruta_completa_local):
-                    try:
-                        ftp.mkd(ruta_completa_ftp)
-                    except Exception:
-                        pass  # Si la carpeta ya existe, no hacer nada
-                    sincronizar_recursivo(ftp, ruta_completa_ftp, ruta_completa_local)
-                    continue
-                # Comparar fechas y actualizar el más antiguo
-                fecha_ftp = obtener_fecha_modificacion_ftp(ftp, ruta_completa_ftp) or 0
+            if info['type'] == 'dir':
+                sincronizar_desde_ftp(ftp, ruta_completa_ftp, ruta_completa_local)
+            else:
+                fecha_ftp = ajustar_fecha_utc_a_arg(obtener_fecha_modificacion_ftp(ftp, ruta_completa_ftp) or 0)
                 fecha_local = os.path.getmtime(ruta_completa_local) if os.path.exists(ruta_completa_local) else 0
+                
+                if fecha_ftp <= fecha_local:
+                    continue  # El archivo local es más reciente o igual
+                
+                with open(ruta_completa_local, 'wb') as file:
+                    ftp.retrbinary(f'RETR {ruta_completa_ftp}', file.write)
+                os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))
+                print(f"Descargado: {ruta_completa_local}")
+    
+    def sincronizar_desde_local(ftp, ruta_local, ruta_ftp):
+        """Sube archivos y carpetas a FTP si son más nuevos o no existen en FTP."""
+        for nombre in os.listdir(ruta_local):
+            if nombre in ignore_list:
+                continue
+            
+            ruta_completa_local = os.path.join(ruta_local, nombre)
+            ruta_completa_ftp = f"{ruta_ftp}/{nombre}"
 
-                if fecha_ftp > fecha_local:
-                    try:
-                        with open(ruta_completa_local, 'wb') as file:
-                            ftp.retrbinary(f'RETR {ruta_completa_ftp}', file.write)
-                        os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))
-                        print(f"Descargado: {ruta_completa_local}")
-                    except Exception as e:
-                        print(f"Error descargando {nombre}: {e}")
-                elif fecha_local > fecha_ftp:
-                    try:
-                        with open(ruta_completa_local, 'rb') as file:
-                            ftp.storbinary(f"STOR {ruta_completa_ftp}", file)
-                        print(f"Subido: {ruta_completa_local} -> {ruta_completa_ftp}")
-                    except Exception as e:
-                        print(f"Error subiendo archivo {nombre}: {e}")
-            elif nombre in elementos_ftp:
-                # Solo en FTP, descargar
+            if os.path.isdir(ruta_completa_local):
                 try:
-                    with open(ruta_completa_local, 'wb') as file:
-                        ftp.retrbinary(f'RETR {ruta_completa_ftp}', file.write)
-                    print(f"Descargado: {ruta_completa_local}")
-                except Exception as e:
-                    print(f"Error descargando {nombre}: {e}")
-            elif nombre in elementos_locales:
-                if os.path.isdir(ruta_completa_local):
-                    try:
-                        ftp.mkd(ruta_completa_ftp)
-                    except Exception:
-                        pass  # Si la carpeta ya existe, no hacer nada
-                    sincronizar_recursivo(ftp, ruta_completa_ftp, ruta_completa_local)
-                elif os.path.isfile(ruta_completa_local):
-                # Solo en local, subir
-                    if os.path.isfile(ruta_completa_local):
-                        try:
-                            with open(ruta_completa_local, 'rb') as file:
-                                ftp.storbinary(f"STOR {ruta_completa_ftp}", file)
-                            print(f"Subido: {ruta_completa_local} -> {ruta_completa_ftp}")
-                        except Exception as e:
-                            print(f"Error subiendo archivo {nombre}: {e}")
-                elif os.path.isdir(ruta_completa_local):
-                    try:
-                        ftp.mkd(ruta_completa_ftp)
-                    except Exception:
-                        pass  # Si la carpeta ya existe, no hacer nada
-                    sincronizar_recursivo(ftp, ruta_completa_ftp, ruta_completa_local)
-
-    sincronizar_recursivo(ftp, ruta_inicial_ftp, ruta_local)
+                    ftp.mkd(ruta_completa_ftp)
+                except ftplib.error_perm:
+                    pass  # La carpeta ya existe
+                sincronizar_desde_local(ftp, ruta_completa_local, ruta_completa_ftp)
+            else:
+                fecha_local = os.path.getmtime(ruta_completa_local)
+                fecha_ftp = ajustar_fecha_utc_a_arg(obtener_fecha_modificacion_ftp(ftp, ruta_completa_ftp) or 0)
+                
+                if fecha_local <= fecha_ftp:
+                    continue  # El archivo en FTP es más reciente o igual
+                
+                with open(ruta_completa_local, 'rb') as file:
+                    ftp.storbinary(f'STOR {ruta_completa_ftp}', file)
+                print(f"Subido: {ruta_completa_local}")
+    
+    sincronizar_desde_ftp(ftp, ruta_inicial_ftp, ruta_local)
+    sincronizar_desde_local(ftp, ruta_local, ruta_inicial_ftp)
     ftp.quit()
-    print("Sincronización completada con éxito.")
+    print("Sincronización bidireccional completada con éxito.")
 
 
 
