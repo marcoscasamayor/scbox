@@ -79,17 +79,42 @@ def crear_archivo_opciones(xRuta_opciones):
 
 
 
-def obtener_fecha_modificacion_ftp(ftp, archivo):
+def obtener_fecha_modificacion_utc(xFtp=None, ruta_local=None, ruta_ftp=None):
     """
-    Obtiene la fecha de modificación de un archivo en el servidor FTP.
+    Obtiene la fecha de modificación de un archivo y la convierte a UTC.
+    - Si recibe `ruta_local`, obtiene la fecha del archivo local.
+    - Si recibe `xFtp` y `ruta_ftp`, obtiene la fecha del archivo en el FTP.
+    
+    Retorna un timestamp en UTC o None si hay error o el archivo no existe.
     """
-    try:
-        respuesta = ftp.sendcmd(f"MDTM {archivo}")  # Envía el comando para obtener la hora de modificación
-        fecha_str = respuesta[4:].strip()  # Extrae la cadena de fecha de la respuesta
-        fecha = datetime.strptime(fecha_str, "%Y%m%d%H%M%S")  # Convierte la cadena a un objeto datetime
-        return int(time.mktime(fecha.timetuple()))  # Devuelve la marca de tiempo
-    except Exception:
-        return None  # Devuelve None si ocurre un error
+    if ruta_local:  # 📂 Obtener fecha de archivo local
+        if not os.path.exists(ruta_local):  
+            return None
+        try:
+            fecha_local = datetime.fromtimestamp(os.path.getmtime(ruta_local), timezone.utc)
+            return int(fecha_local.timestamp())  
+        except Exception as e:
+            print(f"⚠️ Error obteniendo fecha local de {ruta_local}: {e}")
+            return None
+
+    elif xFtp and ruta_ftp:  # 🌐 Obtener fecha de archivo en FTP
+        try:
+            respuesta = xFtp.sendcmd(f"MDTM {ruta_ftp}")
+            fecha_ftp = datetime.strptime(respuesta[4:].strip(), "%Y%m%d%H%M%S")
+            fecha_ftp = fecha_ftp.replace(tzinfo=timezone.utc)
+            return int(fecha_ftp.timestamp())  
+        except ftplib.error_perm as e:
+            if "550" in str(e):  # Archivo no encontrado en el FTP
+                return None
+            print(f"⚠️ Error obteniendo fecha FTP de {ruta_ftp}: {e}")
+            return None
+        except Exception as e:
+            print(f"⚠️ Error desconocido obteniendo fecha FTP de {ruta_ftp}: {e}")
+            return None
+
+    return None  
+
+
 
 def crear_estructura_carpetas_ftp(xFtp, xOrigen_dir, xCarpeta_principal, xDestino_dir_ftp='/'):
 
@@ -121,70 +146,92 @@ def crear_estructura_carpetas_ftp(xFtp, xOrigen_dir, xCarpeta_principal, xDestin
 def descargar_archivos_recursivo(xFtp, xRuta_ftp, xRuta_local, xIgnore_list):
     """
     Descarga archivos y carpetas recursivamente desde el servidor FTP a la ruta local,
-    verificando si deben ser ignorados.
+    verificando si deben ser ignorados y comparando fechas en UTC.
+    Al guardar los archivos en local, ajusta la fecha a horario argentino (UTC-3).
     """
-    os.makedirs(xRuta_local, exist_ok=True)  # Crea el directorio local si no existe
+    os.makedirs(xRuta_local, exist_ok=True)  # Asegurar que la carpeta local existe
 
     try:
-        elementos = xFtp.nlst(xRuta_ftp)  # Lista los elementos en la ruta FTP
+        elementos = xFtp.nlst(xRuta_ftp)  # Lista los archivos y carpetas en el FTP
     except Exception as e:
-        print(f"Error listando elementos en {xRuta_ftp}: {e}")  # Imprime mensaje de error si falla la lista
-        return  # Sale de la función
-
-    if not elementos:  # Si no hay elementos, salir
+        print(f"❌ Error listando elementos en {xRuta_ftp}: {e}")
         return
 
-    for elemento in elementos:  # Itera sobre cada elemento
-        ruta_completa_ftp = os.path.join(xRuta_ftp, elemento).replace('\\', '/')  # Obtiene la ruta completa en FTP
-        ruta_completa_local = os.path.join(xRuta_local, os.path.basename(elemento))  # Obtiene la ruta local
-        base_name = os.path.basename(ruta_completa_ftp)  # Obtiene el nombre base de la ruta FTP
+    if not elementos:
+        return
 
-        if any(part in ['.', '..'] for part in ruta_completa_ftp.split('/')):  # Ignorar directorios especiales
+    for elemento in elementos:
+        ruta_completa_ftp = os.path.join(xRuta_ftp, elemento).replace('\\', '/')
+        ruta_completa_local = os.path.join(xRuta_local, os.path.basename(elemento))
+        base_name = os.path.basename(ruta_completa_ftp)
+
+        if any(part in ['.', '..'] for part in ruta_completa_ftp.split('/')):  
+            continue  # Ignorar directorios especiales
+
+        if any(fnmatch.fnmatch(base_name, pattern) for pattern in xIgnore_list):
             continue
 
-        if any(fnmatch.fnmatch(base_name, pattern) for pattern in xIgnore_list):  # Verifica si debe ser ignorado
-            print(f"Ignorando {base_name} porque coincide con un patrón en ignore_list.")  # Imprime mensaje de ignorar
-            continue  # Salta al siguiente elemento
-
         try:
-            xFtp.cwd(ruta_completa_ftp)  # Cambia al directorio FTP
-            try:
-                xFtp.nlst()  # Intenta listar elementos en el directorio
-                if not os.path.exists(ruta_completa_local):  # Si el directorio local no existe, crearlo
-                    os.makedirs(ruta_completa_local)
-                    print(f"Carpeta creada: {ruta_completa_local}")  # Imprime mensaje de éxito
-                descargar_archivos_recursivo(xFtp, ruta_completa_ftp, ruta_completa_local, xIgnore_list)  # Llamada recursiva
-            except Exception:
-                continue  # Salta si ocurre un error
+            xFtp.cwd(ruta_completa_ftp)  # Si no da error, es un directorio
+            if not os.path.exists(ruta_completa_local):  
+                os.makedirs(ruta_completa_local)
+                print(f"📁 Carpeta creada: {ruta_completa_local}")
+            descargar_archivos_recursivo(xFtp, ruta_completa_ftp, ruta_completa_local, xIgnore_list)  # Llamado recursivo
         except Exception:
-            fecha_ftp = obtener_fecha_modificacion_ftp(xFtp, ruta_completa_ftp)  # Obtiene la fecha de modificación
-            if fecha_ftp:  # Si la fecha es válida
-                if os.path.exists(ruta_completa_local):  # Si el archivo local existe
-                    fecha_local = int(os.path.getmtime(ruta_completa_local))  # Obtiene la fecha de modificación local
-                    if fecha_local >= fecha_ftp:  # Si el archivo local está actualizado, saltar
-                        continue
-                    else:
-                        print(f"Archivo actualizado: {ruta_completa_local}")  # Imprime mensaje de actualización
-                else:
-                    print(f"Archivo creado: {ruta_completa_local}")  # Imprime mensaje de creación
-                try:
-                    with open(ruta_completa_local, 'wb') as archivo_local:  # Abre el archivo local para escritura
-                        xFtp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)  # Descarga el archivo
-                    os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))  # Actualiza la fecha de modificación
-                except Exception as e:
-                    print(f"Error al descargar {ruta_completa_ftp}: {e}")  # Imprime mensaje de error si falla la descarga
+            # 📌 Comparación de fechas en UTC
+            fecha_ftp_utc = obtener_fecha_modificacion_utc(xFtp=xFtp, ruta_ftp=ruta_completa_ftp)
+            fecha_local_utc = obtener_fecha_modificacion_utc(ruta_local=ruta_completa_local)
+
+            if fecha_ftp_utc is not None:
+                if fecha_local_utc is None or fecha_local_utc < fecha_ftp_utc:
+                    print(f"⬇️ Descargando archivo más reciente: {ruta_completa_local}")
+                    try:
+                        with open(ruta_completa_local, 'wb') as archivo_local:
+                            xFtp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)
+
+                        # 🔥 Convertimos la fecha UTC a hora de Argentina (UTC-3) antes de guardarla
+                        fecha_ftp_arg = fecha_ftp_utc - 3 * 3600  # Restamos 3 horas en segundos
+                        os.utime(ruta_completa_local, (fecha_ftp_arg, fecha_ftp_arg))  
+
+                        # 🔥 Verificación extra para ver si `os.utime()` funcionó
+                        nueva_fecha_local = int(os.path.getmtime(ruta_completa_local))
+                        diferencia = abs(nueva_fecha_local - fecha_ftp_arg)
+                        if diferencia > 2:  # Tolerancia de 2s por diferencias de sistema
+                            print(f"⚠️ Advertencia: No se pudo actualizar la fecha de {ruta_completa_local} (Dif: {diferencia}s).")
+
+                    except Exception as e:
+                        print(f"❌ Error al descargar {ruta_completa_ftp}: {e}")
+
+
+
+
+
 
 def set_fecha_modificacion(xFtp, xRuta_ftp, xFecha_local):
-
-
     """
-    Establece la fecha de modificación del archivo en el servidor FTP.
+    Establece la fecha de modificación del archivo en el servidor FTP en UTC.
+    Pero cuando se usa localmente, se mantiene en horario argentino (UTC-3).
     """
     try:
-        comando_mfmt = f"MFMT {xFecha_local.strftime('%Y%m%d%H%M%S')} {xRuta_ftp}"  # Crea el comando para establecer la fecha de modificación
-        xFtp.sendcmd(comando_mfmt)  # Envía el comando al servidor FTP
+        # 🔥 Convertimos la fecha de ART (UTC-3) a UTC para enviarla al FTP
+        fecha_utc = xFecha_local + timedelta(hours=3)  
+
+        comando_mfmt = f"MFMT {fecha_utc.strftime('%Y%m%d%H%M%S')} {xRuta_ftp}"
+        respuesta = xFtp.sendcmd(comando_mfmt)
+
+        # 🔥 Verificación después de intentar modificar la fecha
+        nueva_fecha_ftp = obtener_fecha_modificacion_utc(xFtp=xFtp, ruta_ftp=xRuta_ftp)
+        if nueva_fecha_ftp is None or nueva_fecha_ftp != int(fecha_utc.timestamp()):
+            print(f"⚠️ Advertencia: No se pudo modificar la fecha en el FTP para {xRuta_ftp}")
+
+    except ftplib.error_perm as e:
+        print(f"⚠️ Permiso denegado para modificar la fecha de {xRuta_ftp}: {e}")
     except Exception as e:
-        print(f"No se pudo modificar la fecha para {xRuta_ftp}: {e}")  # Imprime mensaje de error si falla la modificación
+        print(f"❌ Error inesperado al modificar la fecha de {xRuta_ftp}: {e}")
+
+
+
+
 
 def agregar_historial_log(xContenido_existente, xUsuario, xAccion, xTipo, xDescripcion):
 
@@ -254,154 +301,48 @@ def leer_ignore_list(xRuta_options):
 
 
 def subir_archivos_recursivo(xFtp, xRuta_local, xRuta_ftp, xIgnore_list):
-
-
     """
     Sube archivos y carpetas recursivamente desde la ruta local al servidor FTP,
-    verificando si deben ser ignorados.
+    comparando fechas en UTC en lugar de tamaño.
     """
-    for xNombre in os.listdir(xRuta_local):  # Itera sobre cada elemento en el directorio local
-        if xNombre == "scb.log":  # Salta el archivo de log
+    for xNombre in os.listdir(xRuta_local):
+        if xNombre == "scb.log":  # Evitar subir logs
             continue
 
-        xRuta_completa_local = os.path.join(xRuta_local, xNombre)  # Obtiene la ruta completa local
-        xRuta_completa_ftp = os.path.join(xRuta_ftp, xNombre).replace("\\", "/")  # Obtiene la ruta completa en FTP
+        xRuta_completa_local = os.path.join(xRuta_local, xNombre)
+        xRuta_completa_ftp = os.path.join(xRuta_ftp, xNombre).replace("\\", "/")
 
-        # Verifica si el archivo o carpeta está en la lista de ignorados
-        if xNombre in xIgnore_list:  # Si el nombre está en la lista de ignorados
-            print(f"Ignorando: {xRuta_completa_local}")  # Imprime mensaje de ignorar
-            continue  # Salta al siguiente elemento
+        if xNombre in xIgnore_list:
+            continue
 
-        if os.path.isfile(xRuta_completa_local):  # Si el elemento es un archivo
-            xFecha_creacion_local = datetime.fromtimestamp(os.path.getctime(xRuta_completa_local))  # Obtiene la fecha de creación del archivo local
-            try:
-                xTamaño_archivo_ftp = xFtp.size(xRuta_completa_ftp)  # Obtiene el tamaño del archivo en el servidor FTP
-                xTamaño_archivo_local = os.path.getsize(xRuta_completa_local)  # Obtiene el tamaño del archivo local
+        if os.path.isfile(xRuta_completa_local):
+            fecha_mod_local = obtener_fecha_modificacion_utc(ruta_local=xRuta_completa_local)
+            fecha_mod_ftp = obtener_fecha_modificacion_utc(xFtp=xFtp, ruta_ftp=xRuta_completa_ftp)
 
-                if xTamaño_archivo_local != xTamaño_archivo_ftp:  # Si los tamaños son diferentes
-                    with open(xRuta_completa_local, 'rb') as file:  # Abre el archivo local para lectura
-                        xFtp.storbinary(f'STOR {xRuta_completa_ftp}', file)  # Sube el archivo al servidor FTP
-                    set_fecha_modificacion(xFtp, xRuta_completa_ftp, xFecha_creacion_local)  # Establece la fecha de modificación en el servidor FTP
-                    crear_scb_log(xFtp, xRuta_ftp, "actualizó", xNombre, tipo="archivo")  # Registra la actualización del archivo
-                    
-                    print(f"Archivo actualizado: {xRuta_completa_local} -> {xRuta_completa_ftp}")  # Imprime mensaje de actualización
-            except Exception:
-                with open(xRuta_completa_local, 'rb') as file:  # Abre el archivo local para lectura
-                    xFtp.storbinary(f'STOR {xRuta_completa_ftp}', file)  # Sube el archivo al servidor FTP
-                set_fecha_modificacion(xFtp, xRuta_completa_ftp, xFecha_creacion_local)  # Establece la fecha de modificación en el servidor FTP
-                crear_scb_log(xFtp, xRuta_ftp, "creó", xNombre, tipo="archivo")  # Registra la creación del archivo
-                print(f"Archivo creado: {xRuta_completa_local} -> {xRuta_completa_ftp}")  # Imprime mensaje de creación
-        elif os.path.isdir(xRuta_completa_local):  # Si el elemento es un directorio
-            try:
-                xFtp.cwd(xRuta_completa_ftp)  # Cambia al directorio FTP
-                xFtp.cwd("..")  # Mueve al directorio padre
-            except Exception:
+            if fecha_mod_ftp is None or (fecha_mod_local and fecha_mod_local > fecha_mod_ftp):
                 try:
-                    xFtp.mkd(xRuta_completa_ftp)  # Crea el directorio en el servidor FTP
-                    crear_scb_log(xFtp, xRuta_ftp, "creó", xNombre, tipo="carpeta")  # Registra la creación de la carpeta
-                    print(f"Carpeta creada en FTP: {xRuta_completa_ftp}")  # Imprime mensaje de éxito
+                    with open(xRuta_completa_local, 'rb') as file:
+                        xFtp.storbinary(f'STOR {xRuta_completa_ftp}', file)
+
+                    set_fecha_modificacion(xFtp, xRuta_completa_ftp, datetime.fromtimestamp(fecha_mod_local))
+                    crear_scb_log(xFtp, xRuta_ftp, "actualizó" if fecha_mod_ftp else "creó", xNombre, tipo="archivo")
+
+                    print(f"⬆️ Archivo subido: {xRuta_completa_local} -> {xRuta_completa_ftp}")
                 except Exception as e:
-                    print(f"No se pudo crear la carpeta {xRuta_completa_ftp}: {e}")  # Imprime mensaje de error si falla la creación
+                    print(f"❌ Error al subir {xRuta_completa_local}: {e}")
 
-            subir_archivos_recursivo(xFtp, xRuta_completa_local, xRuta_completa_ftp, xIgnore_list)  # Llamada recursiva para subir archivos en el directorio
-
-
-def sincronizar_archivos():
-    """
-    Sincroniza archivos entre el sistema local y el servidor FTP de forma bidireccional.
-    Convierte las fechas del servidor FTP (UTC) a la zona horaria de Argentina (UTC-3) antes de compararlas.
-    """
-    ruta_config = buscar_archivo_ancestro(ARCHIVO_CONFIG, os.getcwd())
-    if not ruta_config:
-        print("No se encontró el archivo de configuración. Saliendo...")
-        exit()
-
-    ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.path.dirname(ruta_config))
-    if not ruta_opciones:
-        crear_archivo_opciones(os.path.join(os.path.dirname(ruta_config), ARCHIVO_OPTIONS))
-        ruta_opciones = buscar_archivo_ancestro(ARCHIVO_OPTIONS, os.path.dirname(ruta_config))
-
-    ignore_list = leer_opciones(ruta_opciones) if ruta_opciones else []
-    config = leer_configuracion(ruta_config)
-    ftp = conectar_ftp(config)
-
-    directorio_base = os.path.dirname(ruta_config)
-    ruta_relativa = os.path.relpath(os.getcwd(), directorio_base)
-    ruta_local = directorio_base if ruta_relativa == "." else os.path.join(directorio_base, ruta_relativa)
-    ruta_inicial_ftp = ftp.pwd().rstrip('/')
-
-    print(f"Sincronizando bidireccionalmente entre {ruta_local} y {ruta_inicial_ftp}")
-
-    def ajustar_fecha_utc_a_arg(fecha_utc):
-        """Convierte un timestamp UTC a UTC-3."""
-        return fecha_utc - (3 * 3600) if fecha_utc else 0
-
-    def listar_elementos_ftp(ftp, ruta):
-        try:
-            return ftp.mlsd(ruta)
-        except ftplib.error_perm:
+        elif os.path.isdir(xRuta_completa_local):  
             try:
-                return [(nombre, {"type": "file"}) for nombre in ftp.nlst(ruta)]
+                xFtp.cwd(xRuta_completa_ftp)  # Si no da error, la carpeta ya existe
             except Exception:
-                return []
-
-    def sincronizar_desde_ftp(ftp, ruta_ftp, ruta_local):
-        """Descarga archivos y carpetas desde FTP si son más nuevos o no existen en local."""
-        elementos = listar_elementos_ftp(ftp, ruta_ftp)
-        if not os.path.exists(ruta_local):
-            os.makedirs(ruta_local, exist_ok=True)
-
-        for nombre, info in elementos:
-            if nombre in ['.', '..'] or nombre in ignore_list:
-                continue
-            
-            ruta_completa_ftp = f"{ruta_ftp}/{nombre}"
-            ruta_completa_local = os.path.join(ruta_local, nombre)
-
-            if info['type'] == 'dir':
-                sincronizar_desde_ftp(ftp, ruta_completa_ftp, ruta_completa_local)
-            else:
-                fecha_ftp = ajustar_fecha_utc_a_arg(obtener_fecha_modificacion_ftp(ftp, ruta_completa_ftp) or 0)
-                fecha_local = os.path.getmtime(ruta_completa_local) if os.path.exists(ruta_completa_local) else 0
-                
-                if fecha_ftp <= fecha_local:
-                    continue  # El archivo local es más reciente o igual
-                
-                with open(ruta_completa_local, 'wb') as file:
-                    ftp.retrbinary(f'RETR {ruta_completa_ftp}', file.write)
-                os.utime(ruta_completa_local, (fecha_ftp, fecha_ftp))
-                
-    
-    def sincronizar_desde_local(ftp, ruta_local, ruta_ftp):
-        """Sube archivos y carpetas a FTP si son más nuevos o no existen en FTP."""
-        for nombre in os.listdir(ruta_local):
-            if nombre in ignore_list:
-                continue
-            
-            ruta_completa_local = os.path.join(ruta_local, nombre)
-            ruta_completa_ftp = f"{ruta_ftp}/{nombre}"
-
-            if os.path.isdir(ruta_completa_local):
                 try:
-                    ftp.mkd(ruta_completa_ftp)
-                except ftplib.error_perm:
-                    pass  # La carpeta ya existe
-                sincronizar_desde_local(ftp, ruta_completa_local, ruta_completa_ftp)
-            else:
-                fecha_local = os.path.getmtime(ruta_completa_local)
-                fecha_ftp = ajustar_fecha_utc_a_arg(obtener_fecha_modificacion_ftp(ftp, ruta_completa_ftp) or 0)
-                
-                if fecha_local <= fecha_ftp:
-                    continue  # El archivo en FTP es más reciente o igual
-                
-                with open(ruta_completa_local, 'rb') as file:
-                    ftp.storbinary(f'STOR {ruta_completa_ftp}', file)
-                
-    
-    sincronizar_desde_ftp(ftp, ruta_inicial_ftp, ruta_local)
-    sincronizar_desde_local(ftp, ruta_local, ruta_inicial_ftp)
-    ftp.quit()
-    print("Sincronización bidireccional completada con éxito.")
+                    xFtp.mkd(xRuta_completa_ftp)  # Crear la carpeta en el servidor
+                    crear_scb_log(xFtp, xRuta_ftp, "creó", xNombre, tipo="carpeta")
+                    print(f"📁 Carpeta creada en FTP: {xRuta_completa_ftp}")
+                except Exception as e:
+                    print(f"❌ No se pudo crear la carpeta {xRuta_completa_ftp}: {e}")
+
+            subir_archivos_recursivo(xFtp, xRuta_completa_local, xRuta_completa_ftp, xIgnore_list)
 
 
 
@@ -489,7 +430,8 @@ def main():
         
     elif operacion == "s":
         print("Iniciando Sincronizacion..")
-        sincronizar_archivos()  
+        bajar_archivos()
+        subir_archivos()
         
     else:
         print("Opción no válida. Debes ingresar 'u' para subir o 'd' para bajar.")
