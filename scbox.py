@@ -192,12 +192,11 @@ def descargar_archivos_recursivo(xFtp, xRuta_ftp, xRuta_local, xIgnore_list):
                         os.utime(ruta_completa_local, (fecha_ftp_utc, fecha_ftp_utc))  
 
 
-                        # 🔥 Verificación extra para ver si `os.utime()` funcionó
+                        ''' 🔥 Verificación extra para ver si `os.utime()` funcionó
                         nueva_fecha_local = int(os.path.getmtime(ruta_completa_local))
                         diferencia = abs(nueva_fecha_local - fecha_ftp_utc)
                         if diferencia > 2:  # Tolerancia de 2s por diferencias de sistema
-                            print(f"⚠️ Advertencia: No se pudo actualizar la fecha de {ruta_completa_local} (Dif: {diferencia}s).")
-
+                            print(f"⚠️ Advertencia: No se pudo actualizar la fecha de {ruta_completa_local} (Dif: {diferencia}s).")'''
                     except Exception as e:
                         print(f"❌ Error al descargar {ruta_completa_ftp}: {e}")
 
@@ -404,9 +403,6 @@ def bajar_archivos():
 
     ruta_local = os.getcwd()
 
-    print(f"Ruta FTP desde donde se descargará: {ruta_inicial_ftp}")
-    print(f"Ruta local destino: {ruta_local}")
-
     descargar_archivos_recursivo(ftp, ruta_inicial_ftp, ruta_local, ignore_list)
 
     ftp.quit()
@@ -415,19 +411,19 @@ def bajar_archivos():
 
 def main():
     if len(sys.argv) != 2:
-        print("Uso: scbox [u | d | s ]")
+        print("Uso: scbox [ u | d | s ]")
 
     operacion = sys.argv[1].strip().lower()
 
     if operacion == "u":
-        print("Iniciando Upload..")
+        print("Iniciando Upload.. [scbox 25.03]")
         subir_archivos()  # Llamada a la función de subida
     elif operacion == "d":
-        print("Iniciando Dowload..")
+        print("Iniciando Dowload.. [scbox 25.03]")
         bajar_archivos()  # Llamada a la función de bajada
         
     elif operacion == "s":
-        print("Iniciando Sincronizacion..")
+        print("Iniciando Sincronizacion.. [scbox 25.03]")
         bajar_archivos()
         subir_archivos()
         
