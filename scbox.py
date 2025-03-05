@@ -217,13 +217,14 @@ def set_fecha_modificacion(xFtp, xRuta_ftp, xFecha_local):
         comando_mfmt = f"MFMT {fecha_utc.strftime('%Y%m%d%H%M%S')} {xRuta_ftp}"
         respuesta = xFtp.sendcmd(comando_mfmt)
 
-        # 🔥 Verificación después de intentar modificar la fecha
+        ''' 🔥 Verificación después de intentar modificar la fecha
         nueva_fecha_ftp = obtener_fecha_modificacion_utc(xFtp=xFtp, ruta_ftp=xRuta_ftp)
         if nueva_fecha_ftp is None or nueva_fecha_ftp != int(fecha_utc.timestamp()):
             print(f"⚠️ Advertencia: No se pudo modificar la fecha en el FTP para {xRuta_ftp}")
 
     except ftplib.error_perm as e:
-        print(f"⚠️ Permiso denegado para modificar la fecha de {xRuta_ftp}: {e}")
+        print(f"⚠️ Permiso denegado para modificar la fecha de {xRuta_ftp}: {e}")'''
+    
     except Exception as e:
         print(f"❌ Error inesperado al modificar la fecha de {xRuta_ftp}: {e}")
 
