@@ -189,13 +189,12 @@ def descargar_archivos_recursivo(xFtp, xRuta_ftp, xRuta_local, xIgnore_list):
                         with open(ruta_completa_local, 'wb') as archivo_local:
                             xFtp.retrbinary(f"RETR {ruta_completa_ftp}", archivo_local.write)
 
-                        # 🔥 Convertimos la fecha UTC a hora de Argentina (UTC-3) antes de guardarla
-                        fecha_ftp_arg = fecha_ftp_utc - 3 * 3600  # Restamos 3 horas en segundos
-                        os.utime(ruta_completa_local, (fecha_ftp_arg, fecha_ftp_arg))  
+                        os.utime(ruta_completa_local, (fecha_ftp_utc, fecha_ftp_utc))  
+
 
                         # 🔥 Verificación extra para ver si `os.utime()` funcionó
                         nueva_fecha_local = int(os.path.getmtime(ruta_completa_local))
-                        diferencia = abs(nueva_fecha_local - fecha_ftp_arg)
+                        diferencia = abs(nueva_fecha_local - fecha_ftp_utc)
                         if diferencia > 2:  # Tolerancia de 2s por diferencias de sistema
                             print(f"⚠️ Advertencia: No se pudo actualizar la fecha de {ruta_completa_local} (Dif: {diferencia}s).")
 
