@@ -416,8 +416,7 @@ def bajar_archivos():
 
 def main():
     if len(sys.argv) != 2:
-        print("Uso: scbox [u|d]")
-        exit()
+        print("Uso: scbox [u | d | s ]")
 
     operacion = sys.argv[1].strip().lower()
 
@@ -434,7 +433,7 @@ def main():
         subir_archivos()
         
     else:
-        print("Opción no válida. Debes ingresar 'u' para subir o 'd' para bajar.")
+        print("Opción no válida. Debes ingresar 'u' para subir - 'd' para bajar - 's' para sincronizar")
         exit()
 
 
