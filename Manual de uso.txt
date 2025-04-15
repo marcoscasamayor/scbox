@@ -1,0 +1,100 @@
+══════════════════════════════════════
+        📦 Manual de Usuario - SCBox
+    Sistema de Sincronización Bidireccional
+══════════════════════════════════════
+
+📖 1. DESCRIPCIÓN
+──────────────────────────────
+SCBox es una herramienta robusta y eficiente para sincronizar archivos entre una carpeta local y un servidor FTP.
+
+Funciones principales:
+✔️ Detección automática de cambios.
+✔️ Transferencia optimizada de archivos (solo los que cambiaron).
+✔️ Preservación de metadatos y estructura de carpetas.
+✔️ Reconexión automática frente a fallos de red.
+
+Ideal para backups, despliegues o mantenimiento de archivos remotos.
+
+🖥️ 2. INSTALACIÓN
+──────────────────────────────
+1️⃣ Copia "scbox.exe" a una ubicación permanente en tu equipo.
+2️⃣ Si usas el script Python: asegúrate de tener Python 3.10 o superior instalado.
+3️⃣ Añade la ruta de "scbox.exe" al PATH del sistema para acceso global desde la terminal.
+
+⚙️ 3. CONFIGURACIÓN INICIAL
+──────────────────────────────
+Crea un archivo "scb.config" en la raíz del proyecto o carpeta que sincronizarás:
+
+{
+    "FTP": {
+        "ftp_server": "servidor.com",
+        "ftp_user": "usuario",
+        "ftp_password": "contraseña"
+    }
+}
+
+Opcional: puedes personalizar la sincronización creando "scb.options":
+
+{
+    "ignore_list": [
+        "scb.log",
+        "scb.config",
+        "*.tmp"
+    ]
+}
+
+💡 Esto evitará subir o descargar archivos no deseados
+(se creara automaticamente con el 1er uso si no se detecta uno).
+
+💻 4. COMANDOS BÁSICOS
+──────────────────────────────
+Desde la terminal, ubícate en la carpeta que deseas sincronizar y ejecuta:
+
+🔽 scbox d    - Descargar archivos desde el servidor.
+🔼 scbox u    - Subir archivos locales al servidor.
+🔁 scbox s    - Sincronización completa (descarga + subida).
+
+🔬 5. FUNCIONAMIENTO DETALLADO
+──────────────────────────────
+🧾 **Descarga (d)**
+- Recorre las carpetas remotas.
+- Compara fechas y versiones.
+- Descarga solo archivos nuevos o modificados.
+- Mantiene la estructura original.
+
+🧾 **Subida (u)**
+- Recorre las carpetas locales.
+- Detecta cambios y sube solo archivos necesarios.
+- Crea carpetas remotas si no existen.
+
+🧾 **Sincronización (s)**
+- Primero descarga las actualizaciones.
+- Luego sube las modificaciones locales.
+- Ambos lados quedan con la versión más reciente.
+
+💎 6. CARACTERÍSTICAS CLAVE
+──────────────────────────────
+✨ Reconexión automática ante pérdidas de conexión.
+✨ Comparación de metadatos para evitar sobreescrituras innecesarias.
+✨ Registro detallado de actividades en "scb.log".
+✨ Barra de progreso para archivos grandes (>1MB).
+✨ Lista de exclusión personalizable.
+✨ Manejo seguro de interrupciones (Ctrl+C).
+
+📌 7. RECOMENDACIONES DE USO
+──────────────────────────────
+✅ Primer uso: ejecutar `scbox d` para descargar todo desde el servidor.
+✅ Uso diario: usar `scbox s` para mantener sincronizado en ambas direcciones.
+✅ Para archivos grandes: verificar estabilidad de conexión.
+✅ Revisa siempre `scb.log` después de sincronizar.
+
+☎️ 8. SOPORTE Y CONTACTO
+──────────────────────────────
+¿Dudas, problemas o ideas? Contactar a Ruben 😉😁
+- Para reporte de errores.
+- Para solicitar nuevas funcionalidades.
+
+══════════════════════════════════════
+       🎉 Fin del Manual - SCBox 🎉
+══════════════════════════════════════
+
