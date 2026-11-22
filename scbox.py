@@ -8,7 +8,8 @@ con manejo robusto de errores y verificación de integridad de archivos.
 import ftplib
 import os
 import json
-from ftplib import FTP
+from ftplib import FTP, FTP_TLS
+import ssl
 import time
 from datetime import datetime, timezone
 import getpass
@@ -108,31 +109,106 @@ logging.basicConfig(
 # FUNCIONES DE CONEXIÓN Y CONFIGURACIÓN
 # ==============================================
 
+class FTP_TLS_Reutilizable(FTP_TLS):
+    """
+    FTPS explícito (AUTH TLS) que reutiliza la sesión TLS del canal de control
+    al abrir cada canal de datos.
+
+    Muchos servidores (pure-ftpd, vsftpd con require_ssl_reuse, FileZilla Server)
+    rechazan las transferencias si el canal de datos no reutiliza la sesión,
+    con errores como "522 SSL connection failed: session reuse required".
+    La clase estándar FTP_TLS de Python no lo hace, por eso se sobrescribe.
+    """
+    def ntransfercmd(self, cmd, rest=None):
+        conn, size = FTP.ntransfercmd(self, cmd, rest)
+        if self._prot_p:
+            conn = self.context.wrap_socket(
+                conn,
+                server_hostname=self.host,
+                session=self.sock.session,
+            )
+        return conn, size
+
+
+_aviso_ftp_plano_mostrado = False
+
+
+def crear_contexto_tls(config_ftp):
+    """
+    Crea el contexto TLS para la conexión FTPS.
+
+    Por defecto verifica el certificado del servidor y que coincida con el
+    nombre del host. Se puede desactivar con "ftp_verificar_certificado": false
+    (por ejemplo, en hostings compartidos cuyo certificado no corresponde al
+    nombre ftp.<dominio>), sabiendo que eso deja la conexión expuesta a un
+    ataque de intermediario.
+    """
+    contexto = ssl.create_default_context()
+    if not config_ftp.get('ftp_verificar_certificado', True):
+        contexto.check_hostname = False
+        contexto.verify_mode = ssl.CERT_NONE
+    return contexto
+
+
 def conectar_ftp(config):
     """
     Establece conexión con el servidor FTP usando la configuración proporcionada.
-    
+
+    Por defecto usa FTPS explícito (AUTH TLS) y cifra tanto el canal de control
+    (usuario y contraseña) como el de datos (archivos).
+
     Args:
         config (dict): Diccionario con la configuración FTP que debe contener:
                       - ftp_server: Dirección del servidor
                       - ftp_user: Nombre de usuario
                       - ftp_password: Contraseña
-    
+                      Opcionales:
+                      - ftp_tls: True (por defecto) para FTPS, False para FTP sin cifrar
+                      - ftp_verificar_certificado: True (por defecto) para validar el certificado
+
     Returns:
-        FTP: Objeto FTP conectado y autenticado
-    
+        FTP: Objeto FTP/FTP_TLS conectado y autenticado
+
     Raises:
         SocketTimeout: Si se excede el tiempo de conexión
         ftplib.all_errors: Para otros errores relacionados con FTP
     """
+    global _aviso_ftp_plano_mostrado
+    config_ftp = config['FTP']
+    usar_tls = config_ftp.get('ftp_tls', True)
     try:
-        ftp = FTP(timeout=TIMEOUT_FTP)
-        ftp.connect(config['FTP']['ftp_server'], timeout=TIMEOUT_FTP)
-        ftp.login(user=config['FTP']['ftp_user'], passwd=config['FTP']['ftp_password'])
+        if usar_tls:
+            ftp = FTP_TLS_Reutilizable(context=crear_contexto_tls(config_ftp), timeout=TIMEOUT_FTP)
+            ftp.connect(config_ftp['ftp_server'], timeout=TIMEOUT_FTP)
+            # login() negocia AUTH TLS antes de enviar usuario y contraseña
+            ftp.login(user=config_ftp['ftp_user'], passwd=config_ftp['ftp_password'])
+            ftp.prot_p()  # Cifra también el canal de datos
+        else:
+            if not _aviso_ftp_plano_mostrado:
+                print("⚠️ ATENCIÓN: conexión FTP sin cifrar (ftp_tls = false). "
+                      "Usuario, contraseña y archivos viajan en texto plano.")
+                _aviso_ftp_plano_mostrado = True
+            ftp = FTP(timeout=TIMEOUT_FTP)
+            ftp.connect(config_ftp['ftp_server'], timeout=TIMEOUT_FTP)
+            ftp.login(user=config_ftp['ftp_user'], passwd=config_ftp['ftp_password'])
         ftp.set_pasv(True)
         return ftp
     except SocketTimeout:
         print("⌛ Timeout al conectar")
+        raise
+    except ssl.SSLCertVerificationError as e:
+        print(f"❌ No se pudo verificar el certificado TLS del servidor: {e.verify_message}")
+        print("   • En macOS con Python de python.org, ejecutá 'Install Certificates.command' "
+              "(en /Applications/Python 3.x/).")
+        print("   • Si el hosting usa un certificado de otro nombre, podés agregar "
+              "\"ftp_verificar_certificado\": false en scb.config.")
+        raise
+    except ftplib.error_perm as e:
+        if usar_tls and str(e).startswith(('500', '502', '504', '534')):
+            print(f"❌ El servidor no acepta FTPS (AUTH TLS): {e}")
+            print("   Si no hay alternativa, se puede usar \"ftp_tls\": false en scb.config (sin cifrado).")
+        else:
+            print(f"❌ Error de conexión: {e}")
         raise
     except ftplib.all_errors as e:
         print(f"❌ Error de conexión: {e}")

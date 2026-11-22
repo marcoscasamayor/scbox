@@ -2,6 +2,8 @@
   "FTP": {
     "ftp_server": "ftp.servidor.com",
     "ftp_user": "usuario",
-    "ftp_password": "contraseña"
+    "ftp_password": "contraseña",
+    "ftp_tls": true,
+    "ftp_verificar_certificado": true
   }
 }
