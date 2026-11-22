@@ -32,6 +32,7 @@ UMBRAL_BARRA_PROGRESO = 1024 * 1024  # 1MB - Mostrar barra para archivos mayores
 TAMANO_BLOQUE = 8192  # Tamaño de bloque para transferencias
 ARCHIVO_LOG = 'scb.log'  # Historial de actividad y errores
 TAMANO_MAXIMO_LOG = 10 * 1024 * 1024  # 10MB - El log nunca supera este tamaño
+ARCHIVOS_NUNCA_SINCRONIZAR = (ARCHIVO_CONFIG, ARCHIVO_LOG, ARCHIVO_LOG + '.tmp')  # Credenciales y log local
 TAMANO_RECORTE_LOG = 8 * 1024 * 1024  # 8MB - Al recortar, se conservan las entradas más recientes
 
 # ==============================================
@@ -170,12 +171,29 @@ class FTP_TLS_Reutilizable(FTP_TLS):
     con errores como "522 SSL connection failed: session reuse required".
     La clase estándar FTP_TLS de Python no lo hace, por eso se sobrescribe.
     """
+    def __init__(self, *args, nombre_certificado=None, **kwargs):
+        # Nombre contra el que se valida el certificado. Por defecto, el host al que se conecta.
+        self.nombre_certificado = nombre_certificado
+        super().__init__(*args, **kwargs)
+
+    def _nombre_tls(self):
+        return self.nombre_certificado or self.host
+
+    def auth(self):
+        """Negocia AUTH TLS validando el certificado contra _nombre_tls()."""
+        if isinstance(self.sock, ssl.SSLSocket):
+            raise ValueError("La conexión ya está cifrada")
+        resp = self.voidcmd('AUTH TLS')
+        self.sock = self.context.wrap_socket(self.sock, server_hostname=self._nombre_tls())
+        self.file = self.sock.makefile(mode='r', encoding=self.encoding)
+        return resp
+
     def ntransfercmd(self, cmd, rest=None):
         conn, size = FTP.ntransfercmd(self, cmd, rest)
         if self._prot_p:
             conn = self.context.wrap_socket(
                 conn,
-                server_hostname=self.host,
+                server_hostname=self._nombre_tls(),
                 session=self.sock.session,
             )
         return conn, size
@@ -216,6 +234,8 @@ def conectar_ftp(config):
                       Opcionales:
                       - ftp_tls: True (por defecto) para FTPS, False para FTP sin cifrar
                       - ftp_verificar_certificado: True (por defecto) para validar el certificado
+                      - ftp_nombre_certificado: nombre contra el que validar el certificado
+                        cuando no coincide con ftp_server (ej. "hstgr.io" en Hostinger)
 
     Returns:
         FTP: Objeto FTP/FTP_TLS conectado y autenticado
@@ -229,7 +249,11 @@ def conectar_ftp(config):
     usar_tls = config_ftp.get('ftp_tls', True)
     try:
         if usar_tls:
-            ftp = FTP_TLS_Reutilizable(context=crear_contexto_tls(config_ftp), timeout=TIMEOUT_FTP)
+            ftp = FTP_TLS_Reutilizable(
+                context=crear_contexto_tls(config_ftp),
+                timeout=TIMEOUT_FTP,
+                nombre_certificado=config_ftp.get('ftp_nombre_certificado'),
+            )
             ftp.connect(config_ftp['ftp_server'], timeout=TIMEOUT_FTP)
             # login() negocia AUTH TLS antes de enviar usuario y contraseña
             ftp.login(user=config_ftp['ftp_user'], passwd=config_ftp['ftp_password'])
@@ -251,8 +275,8 @@ def conectar_ftp(config):
         registrar(f"❌ No se pudo verificar el certificado TLS del servidor: {e.verify_message}")
         registrar("   • En macOS con Python de python.org, ejecutá 'Install Certificates.command' "
               "(en /Applications/Python 3.x/).", 'ERROR')
-        registrar("   • Si el hosting usa un certificado de otro nombre, podés agregar "
-              "\"ftp_verificar_certificado\": false en scb.config.", 'ERROR')
+        registrar("   • Si el hosting usa un certificado de otro nombre (ej. *.hstgr.io en Hostinger), "
+              "agregá en scb.config \"ftp_nombre_certificado\": \"hstgr.io\" con ese nombre.", 'ERROR')
         raise
     except ftplib.error_perm as e:
         if usar_tls and str(e).startswith(('500', '502', '504', '534')):
@@ -397,10 +421,11 @@ def esperar_reconexion():
 
 def crear_scb_log(ftp, accion, descripcion, tipo="archivo", usuario=None):
     """
-    Registra una acción en el archivo de log local y lo sincroniza con el servidor.
+    Registra una acción en el archivo de log local (scb.log).
+    El log es de uso interno: nunca se sube al servidor.
     
     Args:
-        ftp (FTP): Conexión FTP (puede ser None)
+        ftp (FTP): No se usa; se mantiene por compatibilidad con las llamadas existentes
         accion (str): Acción realizada (ej. "descargó", "subió")
         descripcion (str): Descripción del elemento afectado
         tipo (str): Tipo de elemento ("archivo" o "carpeta")
@@ -420,10 +445,6 @@ def crear_scb_log(ftp, accion, descripcion, tipo="archivo", usuario=None):
     
     try:
         escribir_log(registro)
-        
-        if ftp:
-            with open('scb.log', 'rb') as archivo:
-                ftp.storbinary('STOR scb.log', archivo)
     except Exception as e:
         registrar(f"⚠️ Error al escribir en log: {e}")
 
@@ -776,7 +797,7 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list, contado
             # Filtrar elementos a ignorar
             if any(p in ['.', '..'] for p in ruta_f.split('/')):
                 continue
-            if nombre == 'scb.log' or any(fnmatch.fnmatch(nombre, patron) for patron in ignore_list):
+            if nombre in ARCHIVOS_NUNCA_SINCRONIZAR or any(fnmatch.fnmatch(nombre, patron) for patron in ignore_list):
                 continue
 
             try:
@@ -864,7 +885,7 @@ def subir_archivos_recursivo(ftp, ruta_local, ruta_ftp, ignore_list, reintentos=
             ruta_f = os.path.join(ruta_ftp, nombre).replace('\\', '/')
 
             # Verificar si el archivo debe ser ignorado
-            if any(fnmatch.fnmatch(nombre, patron) for patron in ignore_list):
+            if nombre in ARCHIVOS_NUNCA_SINCRONIZAR or any(fnmatch.fnmatch(nombre, patron) for patron in ignore_list):
                 continue
 
             if os.path.isfile(ruta_l):

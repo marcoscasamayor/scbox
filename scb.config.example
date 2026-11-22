@@ -4,6 +4,7 @@
     "ftp_user": "usuario",
     "ftp_password": "contraseña",
     "ftp_tls": true,
-    "ftp_verificar_certificado": true
+    "ftp_verificar_certificado": true,
+    "ftp_nombre_certificado": ""
   }
 }

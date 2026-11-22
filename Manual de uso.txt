@@ -37,12 +37,11 @@ Opcional: puedes personalizar la sincronización creando "scb.options":
 
 {
     "ignore_list": [
-        "scb.log",
-        "scb.config",
         "*.tmp"
     ]
 }
 
+💡 "scb.config" y "scb.log" nunca se sincronizan, estén o no en la lista.
 💡 Esto evitará subir o descargar archivos no deseados
 (se creara automaticamente con el 1er uso si no se detecta uno).
 
@@ -53,7 +52,9 @@ contraseña y los archivos viajan cifrados. Opciones en "scb.config":
     "ftp_tls": true                    → FTPS (por defecto, recomendado)
     "ftp_tls": false                   → FTP sin cifrar (solo si el servidor no soporta TLS)
     "ftp_verificar_certificado": true  → valida el certificado del servidor (por defecto)
-    "ftp_verificar_certificado": false → no lo valida (hostings con certificado de otro nombre)
+    "ftp_verificar_certificado": false → no lo valida (inseguro, evitar)
+    "ftp_nombre_certificado": "hstgr.io" → valida el certificado contra ese nombre cuando
+                                         el hosting usa un certificado propio (ej. Hostinger)
 
 💡 En macOS, si aparece un error de certificado con Python de python.org,
 ejecutar "Install Certificates.command" en /Applications/Python 3.x/.
@@ -89,7 +90,7 @@ Desde la terminal, ubícate en la carpeta que deseas sincronizar y ejecuta:
 ✨ Conexión cifrada con FTPS (TLS) por defecto.
 ✨ Reconexión automática ante pérdidas de conexión.
 ✨ Comparación de metadatos para evitar sobreescrituras innecesarias.
-✨ Registro detallado de actividades, errores y avisos en "scb.log"
+✨ Registro local de actividades, errores y avisos en "scb.log" (no se sube al servidor)
    (con fecha y hora; nunca supera 10 MB: se descartan las entradas más antiguas).
 ✨ Barra de progreso para archivos grandes (>1MB).
 ✨ Lista de exclusión personalizable.
