@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 import getpass
 import fnmatch
 import sys
-import logging
 from socket import gaierror, timeout as SocketTimeout
 
 # ==============================================
@@ -31,6 +30,9 @@ TIMEOUT_FTP = 180  # Timeout en segundos para conexión FTP
 TIEMPO_ESPERA_RECONEXION = 600
 UMBRAL_BARRA_PROGRESO = 1024 * 1024  # 1MB - Mostrar barra para archivos mayores a este tamaño
 TAMANO_BLOQUE = 8192  # Tamaño de bloque para transferencias
+ARCHIVO_LOG = 'scb.log'  # Historial de actividad y errores
+TAMANO_MAXIMO_LOG = 10 * 1024 * 1024  # 10MB - El log nunca supera este tamaño
+TAMANO_RECORTE_LOG = 8 * 1024 * 1024  # 8MB - Al recortar, se conservan las entradas más recientes
 
 # ==============================================
 # CLASES AUXILIARES
@@ -97,13 +99,62 @@ class Estadisticas:
 estadisticas = Estadisticas()
 
 # ==============================================
-# CONFIGURACIÓN DE LOGGING
+# LOG (historial de actividad y errores)
 # ==============================================
-logging.basicConfig(
-    level=logging.WARNING,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler('scb.log', mode='a', encoding='utf-8')]
-)
+
+def recortar_log(ruta_log):
+    """
+    Elimina las entradas más antiguas del log y conserva aproximadamente las
+    últimas TAMANO_RECORTE_LOG bytes, cortando en un salto de línea.
+    Se escribe en un archivo temporal y se reemplaza, para no dejar el log
+    a medio escribir si el proceso se interrumpe.
+    """
+    tamano = os.path.getsize(ruta_log)
+    with open(ruta_log, 'rb') as archivo:
+        archivo.seek(max(0, tamano - TAMANO_RECORTE_LOG))
+        resto = archivo.read()
+    corte = resto.find(b'\n')
+    if corte != -1:
+        resto = resto[corte + 1:]
+    aviso = (f"--- {datetime.now().strftime('%d-%m-%Y %H:%M:%S')} log recortado: se eliminaron "
+             f"las entradas más antiguas para no superar {TAMANO_MAXIMO_LOG // (1024 * 1024)} MB ---\n")
+    ruta_temp = ruta_log + '.tmp'
+    with open(ruta_temp, 'wb') as archivo:
+        archivo.write(aviso.encode('utf-8'))
+        archivo.write(resto)
+    os.replace(ruta_temp, ruta_log)
+
+
+def escribir_log(linea, ruta_log=ARCHIVO_LOG):
+    """
+    Agrega una línea al log, recortándolo antes si superaría TAMANO_MAXIMO_LOG.
+    Nunca lanza excepciones: un problema con el log no debe frenar la sincronización.
+    """
+    try:
+        datos = (linea.rstrip('\n') + '\n').encode('utf-8')
+        tamano = os.path.getsize(ruta_log) if os.path.exists(ruta_log) else 0
+        if tamano + len(datos) > TAMANO_MAXIMO_LOG:
+            recortar_log(ruta_log)
+        with open(ruta_log, 'ab') as archivo:
+            archivo.write(datos)
+    except Exception as e:
+        print(f"⚠️ No se pudo escribir en {ruta_log}: {e}")
+
+
+def registrar(mensaje, nivel=None):
+    """
+    Muestra un mensaje en pantalla y lo guarda en el log con fecha y hora.
+
+    Args:
+        mensaje (str): Texto a mostrar (puede empezar con salto de línea o emoji)
+        nivel (str): "ERROR" o "AVISO". Si no se indica, es AVISO cuando el
+                     mensaje empieza con ⚠️ y ERROR en cualquier otro caso.
+    """
+    print(mensaje)
+    if nivel is None:
+        nivel = 'AVISO' if mensaje.lstrip().startswith('⚠️') else 'ERROR'
+    texto = ' '.join(str(mensaje).split())
+    escribir_log(f"{datetime.now().strftime('%d-%m-%Y %H:%M:%S')} [{nivel}] {texto}")
 
 # ==============================================
 # FUNCIONES DE CONEXIÓN Y CONFIGURACIÓN
@@ -185,7 +236,7 @@ def conectar_ftp(config):
             ftp.prot_p()  # Cifra también el canal de datos
         else:
             if not _aviso_ftp_plano_mostrado:
-                print("⚠️ ATENCIÓN: conexión FTP sin cifrar (ftp_tls = false). "
+                registrar("⚠️ ATENCIÓN: conexión FTP sin cifrar (ftp_tls = false). "
                       "Usuario, contraseña y archivos viajan en texto plano.")
                 _aviso_ftp_plano_mostrado = True
             ftp = FTP(timeout=TIMEOUT_FTP)
@@ -194,24 +245,24 @@ def conectar_ftp(config):
         ftp.set_pasv(True)
         return ftp
     except SocketTimeout:
-        print("⌛ Timeout al conectar")
+        registrar("⌛ Timeout al conectar")
         raise
     except ssl.SSLCertVerificationError as e:
-        print(f"❌ No se pudo verificar el certificado TLS del servidor: {e.verify_message}")
-        print("   • En macOS con Python de python.org, ejecutá 'Install Certificates.command' "
-              "(en /Applications/Python 3.x/).")
-        print("   • Si el hosting usa un certificado de otro nombre, podés agregar "
-              "\"ftp_verificar_certificado\": false en scb.config.")
+        registrar(f"❌ No se pudo verificar el certificado TLS del servidor: {e.verify_message}")
+        registrar("   • En macOS con Python de python.org, ejecutá 'Install Certificates.command' "
+              "(en /Applications/Python 3.x/).", 'ERROR')
+        registrar("   • Si el hosting usa un certificado de otro nombre, podés agregar "
+              "\"ftp_verificar_certificado\": false en scb.config.", 'ERROR')
         raise
     except ftplib.error_perm as e:
         if usar_tls and str(e).startswith(('500', '502', '504', '534')):
-            print(f"❌ El servidor no acepta FTPS (AUTH TLS): {e}")
-            print("   Si no hay alternativa, se puede usar \"ftp_tls\": false en scb.config (sin cifrado).")
+            registrar(f"❌ El servidor no acepta FTPS (AUTH TLS): {e}")
+            registrar("   Si no hay alternativa, se puede usar \"ftp_tls\": false en scb.config (sin cifrado).", 'ERROR')
         else:
-            print(f"❌ Error de conexión: {e}")
+            registrar(f"❌ Error de conexión: {e}")
         raise
     except ftplib.all_errors as e:
-        print(f"❌ Error de conexión: {e}")
+        registrar(f"❌ Error de conexión: {e}")
         raise
 
 def leer_configuracion(ruta_config):
@@ -234,7 +285,7 @@ def leer_configuracion(ruta_config):
                 raise ValueError("Configuración incompleta o inválida")
             return config
     except Exception as e:
-        print(f"❌ Error al leer configuración: {e}")
+        registrar(f"❌ Error al leer configuración: {e}")
         sys.exit(1)
 
 def buscar_archivo_ancestro(nombre_archivo, directorio_actual):
@@ -286,7 +337,7 @@ def leer_ignore_list(ruta_options):
             print(f"📄 Archivo de opciones creado: {ruta_options}")
             return opciones['ignore_list']
         except Exception as e:
-            print(f"❌ Error al crear {ruta_options}: {e}")
+            registrar(f"❌ Error al crear {ruta_options}: {e}")
             return []
     else:
         try:
@@ -295,13 +346,13 @@ def leer_ignore_list(ruta_options):
                 if isinstance(data, dict) and 'ignore_list' in data:
                     return data['ignore_list']
                 else:
-                    print(f"⚠️ Formato inválido en {ruta_options}")
+                    registrar(f"⚠️ Formato inválido en {ruta_options}")
                     return []
         except json.JSONDecodeError:
-            print(f"⚠️ Archivo corrupto: {ruta_options}")
+            registrar(f"⚠️ Archivo corrupto: {ruta_options}")
             return []
         except Exception as e:
-            print(f"❌ Error leyendo {ruta_options}: {e}")
+            registrar(f"❌ Error leyendo {ruta_options}: {e}")
             return []
 
 def verificar_conexion_internet():
@@ -317,7 +368,7 @@ def verificar_conexion_internet():
 
 def esperar_reconexion():
     """Espera hasta que se restablezca la conexión a internet"""
-    print("🌐 Conexión a internet perdida, esperando reconexión...")
+    registrar("🌐 Conexión a internet perdida, esperando reconexión...", 'AVISO')
     tiempo_inicio = time.time()
     ultimo_mensaje = 0
     
@@ -325,7 +376,7 @@ def esperar_reconexion():
         tiempo_transcurrido = time.time() - tiempo_inicio
         
         if tiempo_transcurrido > TIEMPO_ESPERA_RECONEXION:
-            print("❌ Tiempo de espera agotado, no se pudo reconectar")
+            registrar("❌ Tiempo de espera agotado, no se pudo reconectar")
             return False
         
         # Mostrar mensaje cada 30 segundos sin saturar
@@ -368,14 +419,13 @@ def crear_scb_log(ftp, accion, descripcion, tipo="archivo", usuario=None):
     )
     
     try:
-        with open('scb.log', 'a', encoding='utf-8') as archivo:
-            archivo.write(registro + '\n')
+        escribir_log(registro)
         
         if ftp:
             with open('scb.log', 'rb') as archivo:
                 ftp.storbinary('STOR scb.log', archivo)
     except Exception as e:
-        print(f"⚠️ Error al escribir en log: {e}")
+        registrar(f"⚠️ Error al escribir en log: {e}")
 
 def obtener_timestamp_ftp(ftp, ruta_ftp):
     """
@@ -398,7 +448,7 @@ def obtener_timestamp_ftp(ftp, ruta_ftp):
             return None
         raise
     except Exception as e:
-        print(f"⚠️ Error obteniendo timestamp FTP: {e}")
+        registrar(f"⚠️ Error obteniendo timestamp FTP: {e}")
         return None
 
 def obtener_timestamp_local(ruta_local):
@@ -419,7 +469,7 @@ def obtener_timestamp_local(ruta_local):
         fecha_local = datetime.fromtimestamp(timestamp).astimezone()
         return fecha_local.timestamp()
     except Exception as e:
-        print(f"⚠️ Error obteniendo timestamp local: {e}")
+        registrar(f"⚠️ Error obteniendo timestamp local: {e}")
         return None
 
 def necesita_sincronizacion(ts_local, ts_ftp, tolerancia=2):
@@ -458,7 +508,7 @@ def verificar_integridad_archivo(ruta_archivo, tamano_esperado=None):
         
         return True
     except Exception as e:
-        print(f"⚠️ Error verificando integridad: {e}")
+        registrar(f"⚠️ Error verificando integridad: {e}")
         return False
 
 # ==============================================
@@ -579,7 +629,7 @@ def descargar_archivo(ftp, ruta_ftp, ruta_local, nombre_archivo, contador):
                 os.remove(ruta_temp)
             except:
                 pass
-        print(f"❌ Error de conexión al descargar {ruta_ftp}: {e}")
+        registrar(f"❌ Error de conexión al descargar {ruta_ftp}: {e}")
         raise  # Relanzar para manejar reconexión
     except Exception as e:
         estadisticas.errores += 1
@@ -589,7 +639,7 @@ def descargar_archivo(ftp, ruta_ftp, ruta_local, nombre_archivo, contador):
                 os.remove(ruta_temp)
             except:
                 pass
-        print(f"❌ Error al descargar {ruta_ftp}: {e}")
+        registrar(f"❌ Error al descargar {ruta_ftp}: {e}")
         raise
 
 def subir_archivo(ftp, ruta_local, ruta_ftp, nombre_archivo):
@@ -609,7 +659,7 @@ def subir_archivo(ftp, ruta_local, ruta_ftp, nombre_archivo):
     try:
         # Validar que el archivo local existe
         if not os.path.exists(ruta_local):
-            print(f"❌ Archivo local no encontrado: {ruta_local}")
+            registrar(f"❌ Archivo local no encontrado: {ruta_local}")
             return False
 
         tamano_local = os.path.getsize(ruta_local)
@@ -641,14 +691,14 @@ def subir_archivo(ftp, ruta_local, ruta_ftp, nombre_archivo):
                 ftp.delete(ruta_ftp)
             ftp.rename(ruta_temp_ftp, ruta_ftp)
         except:
-            print("❌ No se pudo renombrar archivo temporal remoto")
+            registrar("❌ No se pudo renombrar archivo temporal remoto")
             raise
 
         # Sincronizar fecha de modificación
         try:
             ftp.sendcmd(f"MFMT {fecha_ftp} {ruta_ftp}")
         except ftplib.all_errors as e:
-            print(f"⚠️ No se pudo actualizar fecha remota: {e}")
+            registrar(f"⚠️ No se pudo actualizar fecha remota: {e}")
 
         # Registrar operación exitosa
         crear_scb_log(ftp, "subió", nombre_archivo)
@@ -665,7 +715,7 @@ def subir_archivo(ftp, ruta_local, ruta_ftp, nombre_archivo):
         except:
             pass
         
-        print(f"❌ Error al subir {ruta_ftp}: {e}")
+        registrar(f"❌ Error al subir {ruta_ftp}: {e}")
         return False
 
 # ==============================================
@@ -688,7 +738,7 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list, contado
         FTP: Nueva conexión FTP si hubo reconexión
     """
     if reintentos > MAX_REINTENTOS:
-        print("\n❌ Máximo de reintentos alcanzado - Abortando descarga")
+        registrar("\n❌ Máximo de reintentos alcanzado - Abortando descarga")
         return None
 
     try:
@@ -696,7 +746,7 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list, contado
         try:
             ftp.voidcmd("NOOP")
         except (ftplib.all_errors, gaierror, OSError, SocketTimeout) as e:
-            print(f"\n⚠️ Error de conexión: {str(e)}")
+            registrar(f"\n⚠️ Error de conexión: {str(e)}")
             if not esperar_reconexion():
                 return None
             
@@ -707,7 +757,7 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list, contado
                 contador[0] = 0
                 return descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list, contador, reintentos+1)
             except Exception as e:
-                print(f"❌ Error al reconectar: {e}")
+                registrar(f"❌ Error al reconectar: {e}")
                 return None
 
         # Listar contenido remoto
@@ -753,7 +803,7 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list, contado
             except KeyboardInterrupt:
                 raise
             except (ftplib.all_errors, gaierror, OSError, SocketTimeout) as e:
-                print(f"⚠️ Error de conexión procesando {ruta_f}: {e}")
+                registrar(f"⚠️ Error de conexión procesando {ruta_f}: {e}")
                 if esperar_reconexion():
                     config = leer_configuracion(buscar_archivo_ancestro(ARCHIVO_CONFIG, os.getcwd()))
                     ftp = conectar_ftp(config)
@@ -762,7 +812,7 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list, contado
                 else:
                     return None
             except Exception as e:
-                print(f"⚠️ Error no relacionado con conexión procesando {ruta_f}: {e}")
+                registrar(f"⚠️ Error no relacionado con conexión procesando {ruta_f}: {e}")
                 continue
 
         return ftp
@@ -770,7 +820,7 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list, contado
     except KeyboardInterrupt:
         raise
     except Exception as e:
-        print(f"\n❌ Error en descarga recursiva: {e}")
+        registrar(f"\n❌ Error en descarga recursiva: {e}")
         if reintentos < MAX_REINTENTOS:
             print(f"🔄 Reintentando ({reintentos+1}/{MAX_REINTENTOS})...")
             if esperar_reconexion():
@@ -792,7 +842,7 @@ def subir_archivos_recursivo(ftp, ruta_local, ruta_ftp, ignore_list, reintentos=
         reintentos (int): Número de reintentos actuales
     """
     if reintentos > MAX_REINTENTOS:
-        print("\n❌ Máximo de reintentos alcanzado - Abortando subida")
+        registrar("\n❌ Máximo de reintentos alcanzado - Abortando subida")
         return
 
     try:
@@ -800,7 +850,7 @@ def subir_archivos_recursivo(ftp, ruta_local, ruta_ftp, ignore_list, reintentos=
         try:
             ftp.voidcmd("NOOP")
         except (ftplib.all_errors, gaierror, OSError, SocketTimeout) as e:
-            print(f"\n⚠️ Error de conexión: {str(e)}")
+            registrar(f"\n⚠️ Error de conexión: {str(e)}")
             if not esperar_reconexion():
                 return
             
@@ -822,7 +872,7 @@ def subir_archivos_recursivo(ftp, ruta_local, ruta_ftp, ignore_list, reintentos=
                 try:
                     ftp.voidcmd("NOOP")
                 except (ftplib.all_errors, gaierror, OSError, SocketTimeout) as e:
-                    print(f"\n⚠️ Error de conexión: {str(e)}")
+                    registrar(f"\n⚠️ Error de conexión: {str(e)}")
                     if not esperar_reconexion():
                         return
                     
@@ -849,7 +899,7 @@ def subir_archivos_recursivo(ftp, ruta_local, ruta_ftp, ignore_list, reintentos=
                         crear_scb_log(ftp, "creó", nombre, "carpeta")
                         estadisticas.carpetas_creadas += 1
                     except Exception as e:
-                        print(f"❌ Error creando carpeta {ruta_f}: {e}")
+                        registrar(f"❌ Error creando carpeta {ruta_f}: {e}")
                         continue
 
                 subir_archivos_recursivo(ftp, ruta_l, ruta_f, ignore_list)
@@ -858,7 +908,7 @@ def subir_archivos_recursivo(ftp, ruta_local, ruta_ftp, ignore_list, reintentos=
     except KeyboardInterrupt:
         raise  # Solo propagamos la interrupción
     except Exception as e:
-        print(f"\n❌ Error en subida recursiva: {e}")
+        registrar(f"\n❌ Error en subida recursiva: {e}")
         if reintentos < MAX_REINTENTOS:
             print(f"🔄 Reintentando ({reintentos+1}/{MAX_REINTENTOS})...")
             if esperar_reconexion():
@@ -900,7 +950,7 @@ def crear_estructura_carpetas_ftp(ftp, origen_dir, carpeta_principal, destino_ft
                     print(f"📂 Carpeta creada: {ruta_actual_ftp}")
                     estadisticas.carpetas_creadas += 1
                 except Exception as e:
-                    print(f"❌ Error creando carpeta {ruta_actual_ftp}: {e}")
+                    registrar(f"❌ Error creando carpeta {ruta_actual_ftp}: {e}")
                     raise
 
     return ruta_actual_ftp
@@ -921,7 +971,7 @@ def bajar_archivos():
         # Buscar archivo de configuración
         ruta_config = buscar_archivo_ancestro(ARCHIVO_CONFIG, os.getcwd())
         if not ruta_config:
-            print("❌ Archivo de configuración no encontrado")
+            registrar("❌ Archivo de configuración no encontrado")
             return
 
         # Obtener lista de archivos a ignorar
@@ -933,7 +983,7 @@ def bajar_archivos():
         config = leer_configuracion(ruta_config)
         ftp = conectar_ftp(config)
         if not ftp:
-            print("❌ No se pudo conectar al servidor")
+            registrar("❌ No se pudo conectar al servidor")
             return
 
         # Determinar ruta remota equivalente
@@ -953,12 +1003,12 @@ def bajar_archivos():
         if ftp:
             print("✅ Descarga completada exitosamente")
         else:
-            print("⚠️ Descarga completada con errores")
+            registrar("⚠️ Descarga completada con errores")
 
     except KeyboardInterrupt:
         print("\n🛑 Descarga cancelada por el usuario")
     except Exception as e:
-        print(f"❌ Error fatal: {e}")
+        registrar(f"❌ Error fatal: {e}")
     finally:
         estadisticas.mostrar()
         if ftp and hasattr(ftp, 'sock') and ftp.sock:
@@ -981,7 +1031,7 @@ def subir_archivos():
         # Buscar archivo de configuración
         ruta_config = buscar_archivo_ancestro(ARCHIVO_CONFIG, os.getcwd())
         if not ruta_config:
-            print("❌ Archivo de configuración no encontrado")
+            registrar("❌ Archivo de configuración no encontrado")
             return
 
         # Obtener lista de archivos a ignorar
@@ -993,7 +1043,7 @@ def subir_archivos():
         config = leer_configuracion(ruta_config)
         ftp = conectar_ftp(config)
         if not ftp:
-            print("❌ No se pudo conectar al servidor")
+            registrar("❌ No se pudo conectar al servidor")
             return
 
         # Crear estructura de carpetas en FTP
@@ -1012,7 +1062,7 @@ def subir_archivos():
     except KeyboardInterrupt:
         print("\n🛑 Subida cancelada por el usuario")
     except Exception as e:
-        print(f"❌ Error fatal: {e}")
+        registrar(f"❌ Error fatal: {e}")
     finally:
         estadisticas.mostrar()
         if ftp and hasattr(ftp, 'sock') and ftp.sock:
@@ -1045,7 +1095,7 @@ def sincronizar_completo():
     except KeyboardInterrupt:
         print("\n🛑 Sincronización interrumpida por el usuario")
     except Exception as e:
-        print(f"\n❌ Error durante sincronización: {e}")
+        registrar(f"\n❌ Error durante sincronización: {e}")
     finally:
         estadisticas.mostrar()
 
@@ -1074,14 +1124,14 @@ def main():
         elif operacion == "s":
             sincronizar_completo()
         else:
-            print(f"❌ Operación no válida: {operacion}")
+            registrar(f"❌ Operación no válida: {operacion}")
             sys.exit(1)
             
     except KeyboardInterrupt:
         print("\n🛑 Operación cancelada por el usuario")
         sys.exit(0)
     except Exception as e:
-        print(f"❌ Error crítico: {e}")
+        registrar(f"❌ Error crítico: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

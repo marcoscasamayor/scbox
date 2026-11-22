@@ -89,7 +89,8 @@ Desde la terminal, ubícate en la carpeta que deseas sincronizar y ejecuta:
 ✨ Conexión cifrada con FTPS (TLS) por defecto.
 ✨ Reconexión automática ante pérdidas de conexión.
 ✨ Comparación de metadatos para evitar sobreescrituras innecesarias.
-✨ Registro detallado de actividades en "scb.log".
+✨ Registro detallado de actividades, errores y avisos en "scb.log"
+   (con fecha y hora; nunca supera 10 MB: se descartan las entradas más antiguas).
 ✨ Barra de progreso para archivos grandes (>1MB).
 ✨ Lista de exclusión personalizable.
 ✨ Manejo seguro de interrupciones (Ctrl+C).
