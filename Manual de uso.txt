@@ -66,6 +66,10 @@ Desde la terminal, ubícate en la carpeta que deseas sincronizar y ejecuta:
 🔽 scbox d    - Descargar archivos desde el servidor.
 🔼 scbox u    - Subir archivos locales al servidor.
 🔁 scbox s    - Sincronización completa (descarga + subida).
+❓ scbox      - Sin opciones (o "scbox h"): muestra la ayuda y la
+                configuración de la carpeta actual (servidor, cifrado, exclusiones).
+
+También se aceptan los nombres largos: bajar, subir, sync, ayuda.
 
 🔬 5. FUNCIONAMIENTO DETALLADO
 ──────────────────────────────

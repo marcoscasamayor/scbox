@@ -1124,18 +1124,101 @@ def sincronizar_completo():
 # ENTRADA PRINCIPAL DEL PROGRAMA
 # ==============================================
 
+COMANDOS = {
+    'd': 'd', 'bajar': 'd', 'descargar': 'd',
+    'u': 'u', 'subir': 'u',
+    's': 's', 'sync': 's', 'sincronizar': 's',
+    'h': 'h', 'ayuda': 'h', 'help': 'h', '-h': 'h', '--help': 'h', '?': 'h',
+}
+
+
+def _estado_carpeta():
+    """Devuelve líneas describiendo la configuración de la carpeta actual (sin mostrar la contraseña)."""
+    lineas = []
+    ruta_config = buscar_archivo_ancestro(ARCHIVO_CONFIG, os.getcwd())
+    if not ruta_config:
+        lineas.append(f"  Configuración:  ⚠️  no se encontró {ARCHIVO_CONFIG} en esta carpeta ni en las superiores")
+        lineas.append(f"                  (ver scb.config.example o el manual)")
+    else:
+        try:
+            with open(ruta_config, 'r', encoding='utf-8') as archivo:
+                ftp_conf = json.load(archivo).get('FTP', {})
+            servidor = ftp_conf.get('ftp_server', '¿?')
+            usuario = ftp_conf.get('ftp_user', '¿?')
+            if not ftp_conf.get('ftp_tls', True):
+                cifrado = "⚠️  FTP sin cifrar"
+            elif not ftp_conf.get('ftp_verificar_certificado', True):
+                cifrado = "FTPS 🔒 (sin verificar certificado)"
+            else:
+                cifrado = "FTPS 🔒"
+            lineas.append(f"  Configuración:  {ruta_config}")
+            lineas.append(f"  Servidor:       {usuario} @ {servidor}  —  {cifrado}")
+        except Exception as e:
+            lineas.append(f"  Configuración:  ⚠️  {ruta_config} no es válido: {e}")
+
+    ruta_options = os.path.join(os.getcwd(), ARCHIVO_OPTIONS)
+    if os.path.exists(ruta_options):
+        try:
+            with open(ruta_options, 'r', encoding='utf-8') as archivo:
+                patrones = json.load(archivo).get('ignore_list', [])
+            lineas.append(f"  Exclusiones:    {ARCHIVO_OPTIONS} ({len(patrones)} patrones)")
+        except Exception:
+            lineas.append(f"  Exclusiones:    ⚠️  {ARCHIVO_OPTIONS} no es válido")
+    else:
+        lineas.append(f"  Exclusiones:    {ARCHIVO_OPTIONS} se creará en el primer uso")
+
+    if os.path.exists(ARCHIVO_LOG):
+        lineas.append(f"  Log local:      {ARCHIVO_LOG} ({Estadisticas._formatear_tamano(None, os.path.getsize(ARCHIVO_LOG))})")
+    return lineas
+
+
+def mostrar_ayuda():
+    """Muestra los comandos disponibles y el estado de la carpeta actual."""
+    print("""
+📦 SCBox — sincronización de archivos con un servidor FTP
+
+Uso:  scbox <comando>
+
+Comandos:
+  d   bajar     Descargar del servidor los archivos nuevos o modificados
+  u   subir     Subir al servidor los archivos locales nuevos o modificados
+  s   sync      Sincronización completa: primero descarga, después sube
+  h   ayuda     Mostrar esta ayuda
+
+Ejemplos:
+  scbox d       Primer uso en una carpeta: traer todo desde el servidor
+  scbox s       Uso diario: dejar ambos lados con la versión más reciente
+
+Carpeta actual:  """ + os.getcwd())
+    for linea in _estado_carpeta():
+        print(linea)
+    print("""
+scb.config y scb.log nunca se sincronizan. Más información en "Manual de uso.txt".
+""")
+
+
 def main():
     """
     Punto de entrada principal del programa.
     """
-    if len(sys.argv) != 2:
-        print("\nUso: scbox [u|d|s]")
-        print("  u: Subir archivos locales al servidor")
-        print("  d: Descargar archivos del servidor")
-        print("  s: Sincronización completa (descarga + subida)\n")
+    if len(sys.argv) < 2:
+        mostrar_ayuda()
+        sys.exit(0)
+
+    argumento = sys.argv[1].lower()
+    operacion = COMANDOS.get(argumento)
+
+    if operacion == 'h':
+        mostrar_ayuda()
+        sys.exit(0)
+    if operacion is None or len(sys.argv) > 2:
+        print(f"❌ Comando no válido: {' '.join(sys.argv[1:])}")
+        mostrar_ayuda()
         sys.exit(1)
 
-    operacion = sys.argv[1].lower()
+    # Inicializar archivo de log si no existe (solo cuando se ejecuta una operación)
+    if not os.path.exists(ARCHIVO_LOG):
+        escribir_log(f"Log iniciado - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     try:
         if operacion == "u":
@@ -1144,10 +1227,7 @@ def main():
             bajar_archivos()
         elif operacion == "s":
             sincronizar_completo()
-        else:
-            registrar(f"❌ Operación no válida: {operacion}")
-            sys.exit(1)
-            
+
     except KeyboardInterrupt:
         print("\n🛑 Operación cancelada por el usuario")
         sys.exit(0)
@@ -1156,9 +1236,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    # Inicializar archivo de log si no existe
-    if not os.path.exists('scb.log'):
-        with open('scb.log', 'w', encoding='utf-8') as archivo:
-            archivo.write(f"Log iniciado - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-    
     main()
