@@ -43,8 +43,12 @@ Opcional: puedes personalizar la sincronización creando "scb.options":
 
 💡 Nunca se sincronizan, estén o no en la lista:
    - "scb.config" (credenciales) y "scb.log" (log local)
-   - Archivos propios de macOS: .DS_Store, ._*, .Spotlight-V100, .Trashes,
-     .fseventsd, .TemporaryItems, Icon, etc.
+   - macOS: .DS_Store, ._*, .Spotlight-V100, .Trashes, .fseventsd,
+     .TemporaryItems, Icon, etc.
+   - Windows: Thumbs.db, desktop.ini, $RECYCLE.BIN, System Volume Information
+   - Linux: .directory, .Trash-*, .fuse_hidden*, .nfs*
+   - Bloqueos de documentos abiertos: ~$* (Office) y .~lock.*# (LibreOffice)
+   (sin distinguir mayúsculas de minúsculas)
 💡 Esto evitará subir o descargar archivos no deseados
 (se creara automaticamente con el 1er uso si no se detecta uno).
 

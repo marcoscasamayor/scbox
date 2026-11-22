@@ -46,12 +46,29 @@ ARCHIVOS_NUNCA_SINCRONIZAR = (
     '.DocumentRevisions-V100', '.VolumeIcon.icns',
     '.com.apple.timemachine.donotpresent',
     '.AppleDB', '.AppleDesktop', '.apdisk', 'Network Trash Folder', 'Temporary Items',
+    # Propios de Windows
+    'Thumbs.db', 'ehthumbs.db', 'ehthumbs_vista.db',  # Caché de miniaturas
+    'desktop.ini',               # Configuración de vista de carpeta
+    '$RECYCLE.BIN', 'System Volume Information',
+    # Propios de Linux
+    '.directory',                # Configuración de vista de carpeta (KDE/Dolphin)
+    '.Trash-*',                  # Papelera en discos externos
+    '.fuse_hidden*', '.nfs*',    # Archivos borrados aún abiertos (FUSE / NFS)
+    # Archivos de bloqueo temporales de documentos abiertos
+    '~$*',                       # Microsoft Office
+    '.~lock.*#',                 # LibreOffice
 )
 
 
 def es_excluido_siempre(nombre):
-    """Indica si un archivo o carpeta está en ARCHIVOS_NUNCA_SINCRONIZAR."""
-    return any(nombre == patron or fnmatch.fnmatchcase(nombre, patron) for patron in ARCHIVOS_NUNCA_SINCRONIZAR)
+    """
+    Indica si un archivo o carpeta está en ARCHIVOS_NUNCA_SINCRONIZAR.
+    No distingue mayúsculas de minúsculas (Windows y macOS tampoco lo hacen:
+    Thumbs.db, thumbs.db y THUMBS.DB son el mismo archivo).
+    """
+    nombre = nombre.lower()
+    return any(nombre == patron.lower() or fnmatch.fnmatchcase(nombre, patron.lower())
+               for patron in ARCHIVOS_NUNCA_SINCRONIZAR)
 
 TAMANO_RECORTE_LOG = 8 * 1024 * 1024  # 8MB - Al recortar, se conservan las entradas más recientes
 
@@ -1213,8 +1230,8 @@ Carpeta actual:  """ + os.getcwd())
     for linea in _estado_carpeta():
         print(linea)
     print("""
-scb.config, scb.log y los archivos propios de macOS (.DS_Store, ._*, etc.)
-nunca se sincronizan. Más información en "Manual de uso.txt".
+scb.config, scb.log y los archivos propios de macOS, Windows y Linux
+(.DS_Store, Thumbs.db, desktop.ini, .directory, etc.) nunca se sincronizan. Más información en "Manual de uso.txt".
 """)
 
 
