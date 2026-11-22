@@ -1,0 +1,12 @@
+# Configuración con credenciales (usar scb.config.example como plantilla)
+scb.config
+
+# Logs de sincronización
+scb.log
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc

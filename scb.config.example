@@ -1,0 +1,7 @@
+{
+  "FTP": {
+    "ftp_server": "ftp.servidor.com",
+    "ftp_user": "usuario",
+    "ftp_password": "contraseña"
+  }
+}
