@@ -41,7 +41,10 @@ Opcional: puedes personalizar la sincronización creando "scb.options":
     ]
 }
 
-💡 "scb.config" y "scb.log" nunca se sincronizan, estén o no en la lista.
+💡 Nunca se sincronizan, estén o no en la lista:
+   - "scb.config" (credenciales) y "scb.log" (log local)
+   - Archivos propios de macOS: .DS_Store, ._*, .Spotlight-V100, .Trashes,
+     .fseventsd, .TemporaryItems, Icon, etc.
 💡 Esto evitará subir o descargar archivos no deseados
 (se creara automaticamente con el 1er uso si no se detecta uno).
 

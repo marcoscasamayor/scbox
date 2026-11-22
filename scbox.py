@@ -32,7 +32,27 @@ UMBRAL_BARRA_PROGRESO = 1024 * 1024  # 1MB - Mostrar barra para archivos mayores
 TAMANO_BLOQUE = 8192  # Tamaño de bloque para transferencias
 ARCHIVO_LOG = 'scb.log'  # Historial de actividad y errores
 TAMANO_MAXIMO_LOG = 10 * 1024 * 1024  # 10MB - El log nunca supera este tamaño
-ARCHIVOS_NUNCA_SINCRONIZAR = (ARCHIVO_CONFIG, ARCHIVO_LOG, ARCHIVO_LOG + '.tmp')  # Credenciales y log local
+# Archivos que nunca se sincronizan (ni al subir ni al bajar), aunque no estén en scb.options.
+# Admiten comodines (fnmatch).
+ARCHIVOS_NUNCA_SINCRONIZAR = (
+    # Propios de SCBox: credenciales y log local
+    ARCHIVO_CONFIG, ARCHIVO_LOG, ARCHIVO_LOG + '.tmp',
+    # Propios de macOS
+    '.DS_Store',                 # Preferencias de vista del Finder
+    '._*',                       # AppleDouble: metadatos y resource forks
+    '.AppleDouble', '.LSOverride',
+    'Icon\r',                    # Ícono personalizado de carpeta
+    '.Spotlight-V100', '.Trashes', '.fseventsd', '.TemporaryItems',
+    '.DocumentRevisions-V100', '.VolumeIcon.icns',
+    '.com.apple.timemachine.donotpresent',
+    '.AppleDB', '.AppleDesktop', '.apdisk', 'Network Trash Folder', 'Temporary Items',
+)
+
+
+def es_excluido_siempre(nombre):
+    """Indica si un archivo o carpeta está en ARCHIVOS_NUNCA_SINCRONIZAR."""
+    return any(nombre == patron or fnmatch.fnmatchcase(nombre, patron) for patron in ARCHIVOS_NUNCA_SINCRONIZAR)
+
 TAMANO_RECORTE_LOG = 8 * 1024 * 1024  # 8MB - Al recortar, se conservan las entradas más recientes
 
 # ==============================================
@@ -797,7 +817,7 @@ def descargar_archivos_recursivo(ftp, ruta_ftp, ruta_local, ignore_list, contado
             # Filtrar elementos a ignorar
             if any(p in ['.', '..'] for p in ruta_f.split('/')):
                 continue
-            if nombre in ARCHIVOS_NUNCA_SINCRONIZAR or any(fnmatch.fnmatch(nombre, patron) for patron in ignore_list):
+            if es_excluido_siempre(nombre) or any(fnmatch.fnmatch(nombre, patron) for patron in ignore_list):
                 continue
 
             try:
@@ -885,7 +905,7 @@ def subir_archivos_recursivo(ftp, ruta_local, ruta_ftp, ignore_list, reintentos=
             ruta_f = os.path.join(ruta_ftp, nombre).replace('\\', '/')
 
             # Verificar si el archivo debe ser ignorado
-            if nombre in ARCHIVOS_NUNCA_SINCRONIZAR or any(fnmatch.fnmatch(nombre, patron) for patron in ignore_list):
+            if es_excluido_siempre(nombre) or any(fnmatch.fnmatch(nombre, patron) for patron in ignore_list):
                 continue
 
             if os.path.isfile(ruta_l):
@@ -1193,7 +1213,8 @@ Carpeta actual:  """ + os.getcwd())
     for linea in _estado_carpeta():
         print(linea)
     print("""
-scb.config y scb.log nunca se sincronizan. Más información en "Manual de uso.txt".
+scb.config, scb.log y los archivos propios de macOS (.DS_Store, ._*, etc.)
+nunca se sincronizan. Más información en "Manual de uso.txt".
 """)
 
 
